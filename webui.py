@@ -33,7 +33,7 @@ def run_folder(input_audio,model_config_name):
     return 44100,estimates_now
 
 
-import webui as gr
+import gradio as gr
 if __name__ == "__main__":
 
     
