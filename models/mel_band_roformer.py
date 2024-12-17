@@ -11,6 +11,7 @@ import flax.linen as nn
 import audax
 import numpy as np
 from librosa import filters
+import util
 def exists(val):
     return val is not None
 
@@ -481,7 +482,7 @@ class MelBandRoformer(nn.Module):
         # istft
 
         stft_repr = rearrange(stft_repr, 'b n (f s) t -> (b n s) f t', s=audio_channels)
-        t , recon_audio =jax.scipy.signal.istft(stft_repr,nfft=self.stft_n_fft,
+        t , recon_audio = util.istft(stft_repr,nfft=self.stft_n_fft,
             noverlap=self.stft_win_length-self.stft_hop_length,
             nperseg=self.stft_win_length,boundary=False,input_onesided=True)
 
