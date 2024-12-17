@@ -1,0 +1,7 @@
+argparse
+flax
+audax
+einops
+librosa
+OmegaConf
+redis

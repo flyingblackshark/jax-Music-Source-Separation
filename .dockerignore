@@ -1,0 +1,5 @@
+.git
+.github
+.conda
+.vscode
+__pycache__

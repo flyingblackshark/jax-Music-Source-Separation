@@ -5,11 +5,10 @@ FROM python:3.11-slim
 WORKDIR /app
 
 # 复制文件
-COPY gcs_file_handler.py /app/
+COPY . /app/
 
 # 安装所需的Python依赖
-RUN pip install --no-cache-dir google-cloud-storage 
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.gke.txt
 
 # 设置启动命令
-CMD ["python", "infer.py"]
+CMD ["python", "worker.py"]

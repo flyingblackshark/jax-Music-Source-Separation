@@ -17,9 +17,7 @@ from jax.experimental.compilation_cache import compilation_cache as cc
 import time
 from omegaconf import OmegaConf
 cc.set_cache_dir("./jax_cache")
-def run_folder(args):
-    hp = OmegaConf.load(args.config_path)
-    start_time = time.time()
+def load_model(args,hp):
     match args.model_type:
         case "bs_roformer":
             from models.bs_roformer import BSRoformer
@@ -39,6 +37,54 @@ def run_folder(args):
             raise Exception("unknown model")
     
     model = (model,params)
+def run_file(args):
+    start_time = time.time()
+    hp = OmegaConf.load(args.config_path)
+    model = load_model(args,hp)
+
+    # instruments = config.training.instruments
+    # if config.training.target_instrument is not None:
+    #     instruments = [config.training.target_instrument]
+    path = args.input_file
+    if not os.path.isdir(args.store_dir):
+        os.mkdir(args.store_dir)
+        
+    device_mesh = mesh_utils.create_device_mesh((jax.device_count(),))
+    mesh = Mesh(devices=device_mesh, axis_names=('data'))
+
+    print("Starting processing track: ", path)
+    try:
+        mix, sr = librosa.load(path, sr=44100, mono=False)
+    except Exception as e:
+        print('Can read track: {}'.format(path))
+        print('Error message: {}'.format(str(e)))
+
+    if len(mix.shape) == 1:
+        mix = np.stack([mix, mix], axis=0)
+
+    #mix_orig = mix.copy()
+
+    res = demix_track(model,mix,mesh,hp)
+    
+    estimates = res.squeeze(0)
+    estimates = estimates/1024.
+    estimates = estimates.transpose(1,0)
+    
+    file_name, _ = os.path.splitext(os.path.basename(path))
+    output_file = os.path.join(args.store_dir, f"{file_name}.wav")
+    sf.write(output_file, estimates, sr, subtype = 'FLOAT')
+
+    # file_name, _ = os.path.splitext(os.path.basename(path))
+    # instrum_file_name = os.path.join(args.store_dir, f"{file_name}_instrumental.wav")
+    # sf.write(instrum_file_name, mix_orig.T - estimates, sr, subtype = 'FLOAT')
+
+    #time.sleep(1)
+    print("Elapsed time: {:.2f} sec".format(time.time() - start_time))
+
+def run_folder(args):
+    start_time = time.time()
+    hp = OmegaConf.load(args.config_path)
+    model = load_model(args,hp)
     
     all_mixtures_path = glob.glob(args.input_folder + '/*.*')
     all_mixtures_path.sort()
@@ -51,8 +97,6 @@ def run_folder(args):
     if not os.path.isdir(args.store_dir):
         os.mkdir(args.store_dir)
 
-    # if not verbose:
-    #     all_mixtures_path = tqdm(all_mixtures_path, desc="Total progress")
     device_mesh = mesh_utils.create_device_mesh((jax.device_count(),))
     mesh = Mesh(devices=device_mesh, axis_names=('data'))
     for path in all_mixtures_path:
@@ -175,7 +219,7 @@ def demix_track(model, mix,mesh, hp):
         estimated_sources = estimated_sources[..., border:-border]
     return estimated_sources
 
-if __name__ == "__main__":
+def start_infer_folder():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_type", type=str, default=os.getenv('MODEL_TYPE', 'bs_roformer'),
                         help="One of bs_roformer, mel_band_roformer")
@@ -190,3 +234,24 @@ if __name__ == "__main__":
                         help="path to store results as wav file")
     args = parser.parse_args()
     run_folder(args)
+
+def start_infer_file(file_path):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model_type", type=str, default=os.getenv('MODEL_TYPE', 'bs_roformer'),
+                        help="One of bs_roformer, mel_band_roformer")
+    parser.add_argument("--config_path", type=str, default=os.getenv('CONFIG_PATH', './configs/bs_roformer_base.yaml'),
+                        help="path to config file")
+    parser.add_argument("--start_check_point", type=str,
+                        default=os.getenv('START_CHECK_POINT', 'deverb_bs_roformer_8_256dim_8depth.ckpt'),
+                        help="Initial checkpoint to valid weights")
+    parser.add_argument("--input_file", type=str, default=os.getenv('INPUT_FILE', './input/test.wav'),
+                        help="folder with mixtures to process")
+    parser.add_argument("--store_dir", type=str, default=os.getenv('STORE_DIR', './output'),
+                        help="path to store results as wav file")
+    args = parser.parse_args()
+
+    if file_path is not None:
+        args.input_file = file_path
+    run_folder(args)
+if __name__ == "__main__":
+    start_infer_folder()
