@@ -167,3 +167,4 @@ input/
 output/
 .vscode/
 .conda/
+MelBandRoformer.ckpt

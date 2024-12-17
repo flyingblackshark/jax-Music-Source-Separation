@@ -21,7 +21,7 @@ def load_model_from_config(config_path,start_check_point):
     hp = OmegaConf.load(config_path)
     model = None
     params = None
-    match hp.model_type:
+    match hp.model.type:
         case "bs_roformer":
             from models.bs_roformer import BSRoformer
             from convert import load_bs_roformer_params
@@ -78,7 +78,7 @@ def run_folder(args):
         res = demix_track(model,params,mix,mesh,hp)
         
         estimates = res.squeeze(0)
-        estimates = estimates/1024.
+        #estimates = estimates/1024.
         estimates = estimates.transpose(1,0)
         
         file_name, _ = os.path.splitext(os.path.basename(path))
@@ -182,8 +182,8 @@ def demix_track(model,params, mix,mesh, hp):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_type", type=str, default=os.getenv('MODEL_TYPE', 'bs_roformer'),
-                        help="One of bs_roformer, mel_band_roformer")
+    # parser.add_argument("--model_type", type=str, default=os.getenv('MODEL_TYPE', 'bs_roformer'),
+    #                     help="One of bs_roformer, mel_band_roformer")
     parser.add_argument("--config_path", type=str, default=os.getenv('CONFIG_PATH', './configs/bs_roformer_base.yaml'),
                         help="path to config file")
     parser.add_argument("--start_check_point", type=str,

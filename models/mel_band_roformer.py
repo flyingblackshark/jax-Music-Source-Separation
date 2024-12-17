@@ -345,7 +345,6 @@ class MelBandRoformer(nn.Module):
     ff_dropout:float=0.1
     #flash_attn=True
     dim_freqs_in:int=1025
-    sample_rate:int=44100
     stft_n_fft:int=2048
     stft_hop_length:int=441
     # 10ms at 44100Hz, from sections 4.1, 4.4 in the paper - @faroit recommends // 2 or // 4 for better reconstruction
@@ -358,13 +357,18 @@ class MelBandRoformer(nn.Module):
     multi_stft_hop_size:int=147
     multi_stft_normalized:bool=False
     # multi_stft_window_fn: Callable = torch.hann_window
-    #freqs_per_bands_with_complex:tuple[int]=None
-    #freqs_per_bands_with_complex_cum:tuple[int]=None
-    #freq_indices:tuple[int]=None
-    #num_bands_per_freq:tuple[int]=None
-    #@nn.compact
-    def __init__(self):
-        mel_filter_bank_numpy = filters.mel(sr=self.sample_rate, n_fft=self.stft_n_fft, n_mels=self.num_bands)
+    # freqs_per_bands_with_complex:tuple[int]=None
+    # freqs_per_bands_with_complex_cum:tuple[int]=None
+    # freq_indices:tuple[int]=None
+    # num_bands_per_freq:tuple[int]=None
+    @nn.compact
+    def __call__(
+            self,
+            raw_audio,
+            target=None,
+            return_loss_breakdown=False,
+            deterministic=False):
+        mel_filter_bank_numpy = filters.mel(sr=44100, n_fft=2048, n_mels=60)
         mel_filter_bank_numpy[0][0] = 1.
         mel_filter_bank_numpy[-1, -1] = 1.
         freqs_per_band = mel_filter_bank_numpy > 0
@@ -374,23 +378,13 @@ class MelBandRoformer(nn.Module):
         #stereo
         freq_indices = repeat(freq_indices, 'f -> f s', s=2)
         freq_indices = freq_indices * 2 + np.arange(2)
-        self.freq_indices = rearrange(freq_indices, 'f s -> (f s)')
+        freq_indices = rearrange(freq_indices, 'f s -> (f s)')
 
         num_freqs_per_band = reduce(freqs_per_band, 'b f -> b', 'sum')
-        self.num_bands_per_freq = reduce(freqs_per_band, 'b f -> f', 'sum')
-        self.freqs_per_bands_with_complex = tuple(2 * f * 2 for f in num_freqs_per_band.tolist())
-        self.freqs_per_bands_with_complex_cum = np.cumsum(np.asarray(self.freqs_per_bands_with_complex))
-        self.bandsplit = BandSplit(
-            dim=self.dim,
-            freqs_per_bands_with_complex=self.freqs_per_bands_with_complex,
-            freqs_per_bands_with_complex_cum=self.freqs_per_bands_with_complex_cum
-        )
-    def __call__(
-            self,
-            raw_audio,
-            target=None,
-            return_loss_breakdown=False,
-            deterministic=False):
+        num_bands_per_freq = reduce(freqs_per_band, 'b f -> f', 'sum')
+        freqs_per_bands_with_complex = tuple(2 * f * 2 for f in num_freqs_per_band.tolist())
+        freqs_per_bands_with_complex_cum = np.cumsum(np.asarray(freqs_per_bands_with_complex))
+
         audio_channels = 2 if self.stereo else 1
 
         if raw_audio.ndim == 2:
@@ -416,11 +410,15 @@ class MelBandRoformer(nn.Module):
         stft_repr = rearrange(stft_repr,'b s f t c -> b (f s) t c')
 
         batch_arange = jnp.arange(batch)[..., None]
-        x = stft_repr[batch_arange, self.freq_indices]
+        x = stft_repr[batch_arange, freq_indices]
 
         x = rearrange(x, 'b f t c -> b t (f c)')
         
-        x = self.bandsplit(x)
+        x = BandSplit(
+            dim=self.dim,
+            freqs_per_bands_with_complex=freqs_per_bands_with_complex,
+            freqs_per_bands_with_complex_cum=freqs_per_bands_with_complex_cum
+        )(x)
 
         for i in range(self.depth):
           x = rearrange(x, 'b t f d -> b f t d')
@@ -454,7 +452,7 @@ class MelBandRoformer(nn.Module):
         for _ in range(self.num_stems):
             res = MaskEstimator(
                 dim=self.dim,
-                dim_inputs=self.freqs_per_bands_with_complex,
+                dim_inputs=freqs_per_bands_with_complex,
                 depth=self.mask_estimator_depth
             )(x)
             out.append(res)
@@ -468,12 +466,12 @@ class MelBandRoformer(nn.Module):
         stft_repr = as_complex(stft_repr)
         masks = as_complex(masks)
 
-        scatter_indices = repeat(self.freq_indices, 'f -> b n f t', b=batch, n=self.num_stems, t=stft_repr.shape[-1])
+        scatter_indices = repeat(freq_indices, 'f -> b n f t', b=batch, n=self.num_stems, t=stft_repr.shape[-1])
         stft_repr_expanded_stems = repeat(stft_repr, 'b 1 ... -> b n ...', n=self.num_stems,)
 
         masks_summed = scatter(input=jnp.zeros_like(stft_repr_expanded_stems),dim=2,index=scatter_indices,src=masks,reduce="add")
 
-        denom = repeat(self.num_bands_per_freq, 'f -> (f r) 1', r=channels)
+        denom = repeat(num_bands_per_freq, 'f -> (f r) 1', r=channels)
 
         masks_averaged = masks_summed / jnp.clip(denom,min=1e-8)
 
@@ -482,7 +480,7 @@ class MelBandRoformer(nn.Module):
         # istft
 
         stft_repr = rearrange(stft_repr, 'b n (f s) t -> (b n s) f t', s=audio_channels)
-        t , recon_audio = util.istft(stft_repr,nfft=self.stft_n_fft,
+        t , recon_audio =util.istft(stft_repr,nfft=self.stft_n_fft,
             noverlap=self.stft_win_length-self.stft_hop_length,
             nperseg=self.stft_win_length,boundary=False,input_onesided=True)
 
