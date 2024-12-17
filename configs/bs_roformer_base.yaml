@@ -10,6 +10,7 @@ data:
   segment_size: 44100
 #############################
 model:
+  type: "bs_roformer"
   stereo: True
   dim: 256
   depth: 8

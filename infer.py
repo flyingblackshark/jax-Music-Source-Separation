@@ -17,10 +17,11 @@ from jax.experimental.compilation_cache import compilation_cache as cc
 import time
 from omegaconf import OmegaConf
 cc.set_cache_dir("./jax_cache")
-def run_folder(args):
-    hp = OmegaConf.load(args.config_path)
-    start_time = time.time()
-    match args.model_type:
+def load_model_from_config(config_path,start_check_point):
+    hp = OmegaConf.load(config_path)
+    model = None
+    params = None
+    match hp.model_type:
         case "bs_roformer":
             from models.bs_roformer import BSRoformer
             from convert import load_bs_roformer_params
@@ -29,17 +30,22 @@ def run_folder(args):
                                 stereo=hp.model.stereo,
                                 time_transformer_depth=hp.model.time_transformer_depth,
                                 freq_transformer_depth=hp.model.freq_transformer_depth)
-            params = load_bs_roformer_params(args.start_check_point,hp)
+            params = load_bs_roformer_params(start_check_point,hp)
         case "mel_band_roformer":
             from models.mel_band_roformer import MelBandRoformer
             from convert import load_mel_band_roformer_params
-            model = MelBandRoformer()
-            params = load_mel_band_roformer_params(args.start_check_point,hp)
+            model = MelBandRoformer(dim=hp.model.dim,
+                                    depth=hp.model.depth,
+                                    stereo=hp.model.stereo,
+                                    time_transformer_depth=hp.model.time_transformer_depth,
+                                    freq_transformer_depth=hp.model.freq_transformer_depth)
+            params = load_mel_band_roformer_params(start_check_point,hp)
         case _:
             raise Exception("unknown model")
-    
-    model = (model,params)
-    
+    return model,params,hp
+def run_folder(args):
+    start_time = time.time()
+    model,params,hp = load_model_from_config(args.config_path,args.start_check_point)
     all_mixtures_path = glob.glob(args.input_folder + '/*.*')
     all_mixtures_path.sort()
     print('Total files found: {}'.format(len(all_mixtures_path)))
@@ -69,7 +75,7 @@ def run_folder(args):
 
         #mix_orig = mix.copy()
 
-        res = demix_track(model,mix,mesh,hp)
+        res = demix_track(model,params,mix,mesh,hp)
         
         estimates = res.squeeze(0)
         estimates = estimates/1024.
@@ -87,8 +93,7 @@ def run_folder(args):
     print("Elapsed time: {:.2f} sec".format(time.time() - start_time))
 
 
-def demix_track(model, mix,mesh, hp):
-    model , params = model
+def demix_track(model,params, mix,mesh, hp):
     #default chunk size 
     C = hp.inference.chunk_size
     N = hp.inference.num_overlap

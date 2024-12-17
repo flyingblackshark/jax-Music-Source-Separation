@@ -10,8 +10,9 @@ data:
   segment_size: 44100
 #############################
 model:
+  type: "mel_band_roformer"
   stereo: True
-  dim: 256
+  dim: 384
   depth: 6
   time_transformer_depth: 1
   freq_transformer_depth: 1
