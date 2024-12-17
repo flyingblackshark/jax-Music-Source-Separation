@@ -1,22 +1,12 @@
-import argparse
-import flax
-from convert import load_params
 import librosa
 import numpy as np
-import jax.numpy as jnp
-import soundfile as sf
-import glob
-import os
+from jax.experimental import mesh_utils
 from jax.sharding import Mesh, PartitionSpec, NamedSharding
 from jax.lax import with_sharding_constraint
 from jax.experimental import mesh_utils
-from functools import partial
 import jax
-from librosa import filters
 import numpy as np
 from jax.experimental.compilation_cache import compilation_cache as cc
-from einops import einsum, rearrange, pack, unpack,repeat,reduce
-import time
 from infer import load_model_from_config,demix_track
 cc.set_cache_dir("./jax_cache")
 
