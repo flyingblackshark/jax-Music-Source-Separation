@@ -1,3 +1,2 @@
-# deverb-bs-roformer jax version 
-## This version is working perfectly fine. 😀 
+# merge jax-bs-roformer and jax-mel-band-roformer
 ### Original https://github.com/ZFTurbo/Music-Source-Separation-Training
