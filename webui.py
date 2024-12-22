@@ -49,6 +49,5 @@ if __name__ == "__main__":
         title="人声提取",                          # 界面标题
         description="上传音频文件，输出提取后的人声" # 描述
     )
-
-    # 启动界面
+    iface.queue()
     iface.launch()
