@@ -1,7 +1,4 @@
 import argparse
-import flax
-
-
 import librosa
 import numpy as np
 import jax.numpy as jnp
@@ -9,7 +6,6 @@ import soundfile as sf
 import glob
 import os
 from jax.sharding import Mesh, PartitionSpec, NamedSharding
-from jax.lax import with_sharding_constraint
 from jax.experimental import mesh_utils
 from functools import partial
 import jax
@@ -78,7 +74,6 @@ def run_folder(args):
         res = demix_track(model,params,mix,mesh,hp)
         
         estimates = res.squeeze(0)
-        #estimates = estimates/1024.
         estimates = estimates.transpose(1,0)
         
         file_name, _ = os.path.splitext(os.path.basename(path))

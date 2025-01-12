@@ -1,17 +1,13 @@
 from functools import partial
 from typing import Any, Sequence, Tuple
-import audax.core
-import audax.core.stft
 from einops import einsum, rearrange, pack, unpack,repeat,reduce
 from flax import traverse_util
 import jax
 import jax.numpy as jnp
 import jax.lax as lax
 import flax.linen as nn
-import audax
 import numpy as np
 from librosa import filters
-import util
 def exists(val):
     return val is not None
 
@@ -365,8 +361,6 @@ class MelBandRoformer(nn.Module):
     def __call__(
             self,
             raw_audio,
-            target=None,
-            return_loss_breakdown=False,
             deterministic=False):
         mel_filter_bank_numpy = filters.mel(sr=44100, n_fft=2048, n_mels=60)
         mel_filter_bank_numpy[0][0] = 1.
@@ -396,14 +390,13 @@ class MelBandRoformer(nn.Module):
                     self.stereo and channels == 2), 'stereo needs to be set to True if passing in audio signal that is stereo (channel dimension of 2). also need to be False if mono (channel dimension of 1)'
 
         # to stft
-
-
         raw_audio, batch_audio_channel_packed_shape = pack_one(raw_audio, '* t')
 
-        stft_window = jnp.hanning(self.stft_win_length)
-
-        stft_repr = audax.core.stft.stft(raw_audio, n_fft=self.stft_n_fft,hop_length=self.stft_hop_length,win_length=self.stft_win_length, window=stft_window)
-        stft_repr = stft_repr.transpose(0,2,1)
+        _,_,stft_repr = jax.scipy.signal.stft(raw_audio, nfft=self.stft_n_fft,
+        noverlap=self.stft_win_length-self.stft_hop_length,
+        nperseg=self.stft_win_length,boundary=None)
+        spectrum_win = jnp.sin(jnp.linspace(0, jnp.pi, 2048, endpoint=False)) ** 2
+        stft_repr *= spectrum_win.sum()
         stft_repr = as_real(stft_repr)
 
         stft_repr = unpack_one(stft_repr, batch_audio_channel_packed_shape, '* f t c')
@@ -478,20 +471,16 @@ class MelBandRoformer(nn.Module):
         stft_repr = stft_repr * masks_averaged
 
         # istft
-
         stft_repr = rearrange(stft_repr, 'b n (f s) t -> (b n s) f t', s=audio_channels)
-        t , recon_audio =util.istft(stft_repr,nfft=self.stft_n_fft,
+        t , recon_audio =jax.scipy.signal.istft(stft_repr,nfft=self.stft_n_fft,
             noverlap=self.stft_win_length-self.stft_hop_length,
             nperseg=self.stft_win_length,boundary=False,input_onesided=True)
-
+        recon_audio /= spectrum_win.sum()
         recon_audio = rearrange(recon_audio, '(b n s) t -> b n s t', s=audio_channels, n=self.num_stems)
         if self.num_stems == 1:
             recon_audio = rearrange(recon_audio, 'b 1 s t -> b s t')
 
-        # if a target is passed in, calculate loss for learning
-
-        if not exists(target):
-            return recon_audio
+        return recon_audio
 
 def scatter(input, dim, index, src, reduce=None):
     # JAX-port of PyTorch's scatter. See https://pytorch.org/docs/stable/generated/torch.Tensor.scatter_.html
