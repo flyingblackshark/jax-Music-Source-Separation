@@ -69,7 +69,7 @@ def run_folder(args):
         if len(mix.shape) == 1:
             mix = np.stack([mix, mix], axis=0)
 
-        #mix_orig = mix.copy()
+        mix_orig = mix.copy()
 
         res = demix_track(model,params,mix,mesh,hp)
         
@@ -77,12 +77,12 @@ def run_folder(args):
         estimates = estimates.transpose(1,0)
         
         file_name, _ = os.path.splitext(os.path.basename(path))
-        output_file = os.path.join(args.store_dir, f"{file_name}.wav")
+        output_file = os.path.join(args.store_dir, f"{file_name}_vocal.wav")
         sf.write(output_file, estimates, sr, subtype = 'FLOAT')
 
-        # file_name, _ = os.path.splitext(os.path.basename(path))
-        # instrum_file_name = os.path.join(args.store_dir, f"{file_name}_instrumental.wav")
-        # sf.write(instrum_file_name, mix_orig.T - estimates, sr, subtype = 'FLOAT')
+        file_name, _ = os.path.splitext(os.path.basename(path))
+        instrum_file_name = os.path.join(args.store_dir, f"{file_name}_instrumental.wav")
+        sf.write(instrum_file_name, mix_orig.T - estimates, sr, subtype = 'FLOAT')
 
     #time.sleep(1)
     print("Elapsed time: {:.2f} sec".format(time.time() - start_time))

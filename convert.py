@@ -1,5 +1,4 @@
 import flax
-import jax
 import torch
 def load_bs_roformer_params(path,hp):
     state_dict = torch.load(path,map_location="cpu")
