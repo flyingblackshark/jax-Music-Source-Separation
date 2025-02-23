@@ -424,7 +424,7 @@ class BSRoformer(nn.Module):
                                             nfft=self.stft_n_fft,
                                             noverlap=self.stft_win_length-self.stft_hop_length,
                                             nperseg=self.stft_win_length,boundary=None)
-        spectrum_win = jnp.sin(jnp.linspace(0, jnp.pi, 2048, endpoint=False)) ** 2
+        spectrum_win = jnp.sin(jnp.linspace(0, jnp.pi, self.stft_win_length, endpoint=False)) ** 2
         stft_repr *= spectrum_win.sum()
         stft_repr = as_real(stft_repr)
 
