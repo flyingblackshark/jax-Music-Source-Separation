@@ -18,7 +18,6 @@ from jax.sharding import Mesh, NamedSharding, PartitionSpec
 from jax.stages import Compiled, Wrapped
 from models.bs_roformer import BSRoformer
 from profiling import memory_usage_params
-import audax.core.stft
 from einops import einsum, rearrange, pack, unpack,repeat
 from omegaconf import OmegaConf
 import argparse
@@ -163,14 +162,14 @@ class Trainer:
 
             for window_size in hp.model.multi_stft_resolutions_window_sizes:
                 res_stft_kwargs = dict(
-                    n_fft=max(window_size, hp.model.stft_n_fft),  # not sure what n_fft is across multi resolution stft
-                    win_length=window_size,
-                    window=jnp.hanning(window_size),
-                    hop_length=hp.model.multi_stft_hop_size
+                    nfft=max(window_size, hp.model.stft_n_fft),  # not sure what n_fft is across multi resolution stft
+                    noverlap=window_size - hp.model.multi_stft_hop_size,
+                    nperseg=window_size,
+                    boundary=None,
                 )
 
-                recon_Y = audax.core.stft.stft(rearrange(predict_audio, '... s t -> (... s) t'), **res_stft_kwargs)
-                target_Y = audax.core.stft.stft(rearrange(target_audio, '... s t -> (... s) t'), **res_stft_kwargs)
+                _,_,recon_Y = jax.scipy.signal.stft(rearrange(predict_audio, '... s t -> (... s) t'), **res_stft_kwargs)
+                _,_,target_Y = jax.scipy.signal.stft(rearrange(target_audio, '... s t -> (... s) t'), **res_stft_kwargs)
 
                 multi_stft_resolution_loss = multi_stft_resolution_loss + jnp.mean(jnp.abs(recon_Y - target_Y))
 
