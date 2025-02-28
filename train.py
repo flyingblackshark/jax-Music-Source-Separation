@@ -173,8 +173,8 @@ class Trainer:
 
                 multi_stft_resolution_loss = multi_stft_resolution_loss + jnp.mean(jnp.abs(recon_Y - target_Y))
 
-
-            total_loss = loss + multi_stft_resolution_loss
+            l1_loss = jnp.mean(jnp.abs(predict_audio - target_audio))
+            total_loss = loss + multi_stft_resolution_loss + l1_loss
             return total_loss, state
         
         self.bsr_train_step: Wrapped = jax.jit(
