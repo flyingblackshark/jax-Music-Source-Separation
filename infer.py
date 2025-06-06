@@ -83,7 +83,7 @@ def run_folder(args):
             sf.write(output_file, estimates, sr, subtype = 'FLOAT')
 
         instrum_file_name = os.path.join(args.store_dir, f"{file_name}_other.wav")
-        sf.write(instrum_file_name, mix_orig.T - res.mean(0).transpose(1,0), sr, subtype = 'FLOAT')
+        sf.write(instrum_file_name, mix_orig.T - res.sum(0).transpose(1,0), sr, subtype = 'FLOAT')
 
     #time.sleep(1)
     print("Elapsed time: {:.2f} sec".format(time.time() - start_time))
