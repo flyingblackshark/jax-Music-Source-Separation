@@ -1,2 +1,3 @@
 python infer.py --config_path configs/bs_roformer_base.yaml --start_check_point deverb_bs_roformer_8_256dim_8depth.ckpt --input_folder ./input --store_dir ./output
 python infer.py --config_path configs/mel_band_roformer_base.yaml --start_check_point MelBandRoformer.ckpt --input_folder ./input --store_dir ./output
+#python infer.py --config_path configs/bs_roformer_logic.yaml --start_check_point logic_roformer.pt --input_folder ./input --store_dir ./output

@@ -24,6 +24,8 @@ def load_model_from_config(config_path,start_check_point):
             model = BSRoformer(dim=hp.model.dim,
                                 depth=hp.model.depth,
                                 stereo=hp.model.stereo,
+                                num_stems=hp.model.num_stems,
+                                use_shared_bias=hp.model.use_shared_bias,
                                 time_transformer_depth=hp.model.time_transformer_depth,
                                 freq_transformer_depth=hp.model.freq_transformer_depth)
             params = load_bs_roformer_params(start_check_point,hp)
@@ -72,17 +74,16 @@ def run_folder(args):
         mix_orig = mix.copy()
 
         res = demix_track(model,params,mix,mesh,hp)
-        
-        estimates = res.squeeze(0)
-        estimates = estimates.transpose(1,0)
-        
-        file_name, _ = os.path.splitext(os.path.basename(path))
-        output_file = os.path.join(args.store_dir, f"{file_name}_vocal.wav")
-        sf.write(output_file, estimates, sr, subtype = 'FLOAT')
 
         file_name, _ = os.path.splitext(os.path.basename(path))
-        instrum_file_name = os.path.join(args.store_dir, f"{file_name}_instrumental.wav")
-        sf.write(instrum_file_name, mix_orig.T - estimates, sr, subtype = 'FLOAT')
+        
+        for i in range(res.shape[0]):
+            estimates = res[i].transpose(1,0)
+            output_file = os.path.join(args.store_dir, f"{file_name}_{i}.wav")
+            sf.write(output_file, estimates, sr, subtype = 'FLOAT')
+
+        instrum_file_name = os.path.join(args.store_dir, f"{file_name}_other.wav")
+        sf.write(instrum_file_name, mix_orig.T - res.mean(0).transpose(1,0), sr, subtype = 'FLOAT')
 
     #time.sleep(1)
     print("Elapsed time: {:.2f} sec".format(time.time() - start_time))
@@ -119,7 +120,7 @@ def demix_track(model,params, mix,mesh, hp):
 
    
     # if config.training.target_instrument is not None:
-    req_shape = (1, ) + tuple(mix.shape)
+    req_shape = (hp.model.num_stems, ) + tuple(mix.shape)
     # else:
     #     req_shape = (len(config.training.instruments),) + tuple(mix.shape)
 

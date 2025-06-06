@@ -130,8 +130,7 @@ class FeedForward(nn.Module):
         return net(x)
 class Attend(nn.Module):
     dropout:float = 0.
-    #precision:jax.lax.Precision=jax.lax.Precision.HIGHEST
-    #scale = None
+
     def setup(self):
         self.attn_dropout = nn.Dropout(self.dropout)
 
@@ -227,12 +226,14 @@ class Attention(nn.Module):
     heads:int=8
     dim_head:int=64
     dropout:float=0.
-    #precision:jax.lax.Precision=jax.lax.Precision.HIGHEST
+    shared_qkv_bias:bool=False
+    shared_out_bias:bool=False
+
     @nn.compact
     def __call__(self, x,deterministic):
         dim_inner = self.heads * self.dim_head
         x = RMSNorm(self.dim)(x)
-        temp_x = nn.Dense(dim_inner * 3, use_bias=False,name="to_qkv")(x)
+        temp_x = nn.Dense(dim_inner * 3, use_bias=self.shared_qkv_bias,name="to_qkv")(x)
         q, k, v = rearrange(temp_x, 'b n (qkv h d) -> qkv b h n d', qkv=3, h=self.heads)
         freqs = self.param(
         "freqs",
@@ -245,13 +246,14 @@ class Attention(nn.Module):
         q = rotate_queries_or_keys(q,dim_head=self.dim_head,freqs=freqs)
         k = rotate_queries_or_keys(k,dim_head=self.dim_head,freqs=freqs)
 
-        out = Attend(dropout=self.dropout,name="attend")(q, k, v,deterministic)
+        out = Attend(dropout=self.dropout,
+                     name="attend")(q, k, v,deterministic)
 
         gates = nn.Dense(self.heads,name="to_gates")(x)
         out = out * nn.sigmoid(rearrange(gates, 'b n h -> b h n 1'))
 
         out = rearrange(out, 'b h n d -> b n (h d)')
-        out = nn.Dense(self.dim, use_bias=False,name="to_out")(out)
+        out = nn.Dense(self.dim, use_bias=self.shared_out_bias,name="to_out")(out)
         out = nn.Dropout(self.dropout)(out,deterministic=deterministic)
         return out
     
@@ -264,11 +266,19 @@ class Transformer(nn.Module):
     ff_dropout:float=0.
     ff_mult:int=4
     norm_output:bool=True
+    shared_qkv_bias:bool=False
+    shared_out_bias:bool=False
     def setup(self):
         layers = []
 
         for _ in range(self.depth):
-            attn = Attention(dim=self.dim, dim_head=self.dim_head, heads=self.heads, dropout=self.attn_dropout)
+            attn = Attention(dim=self.dim,
+                            dim_head=self.dim_head,
+                            heads=self.heads,
+                            dropout=self.attn_dropout,
+                            shared_qkv_bias=self.shared_qkv_bias,
+                            shared_out_bias=self.shared_out_bias,
+                                  )
 
             layers.append([
                 attn,
@@ -402,6 +412,7 @@ class BSRoformer(nn.Module):
     multi_stft_resolutions_window_sizes: Tuple[int, ...] = (4096, 2048, 1024, 512, 256)
     multi_stft_hop_size:int=147
     multi_stft_normalized:bool=False
+    use_shared_bias:bool = False
     # multi_stft_window_fn: Callable = torch.hann_window
     @nn.compact
     def __call__(
