@@ -103,11 +103,25 @@ def demix_track(model,params, mix,mesh, hp):
                     out_shardings=x_sharding)
     def model_apply(params, x):
         return model.apply({'params': params}, x , deterministic=True)
+    
+    # 使用vmap优化的窗口化函数
+    @partial(jax.jit, in_shardings=(x_sharding, None), out_shardings=x_sharding)
+    def apply_windowing_vmap(x_batch, window):
+        return jax.vmap(lambda x: x * window)(x_batch)
+    
+    # 使用vmap优化的结果累加函数
+    @jax.jit
+    def accumulate_results_vmap(results, windows, starts, lengths):
+        def accumulate_single(result, window, start, length):
+            return result[:length], window[:length], start
+        return jax.vmap(accumulate_single)(results, windows, starts, lengths)
+    
     length_init = mix.shape[-1]
 
     # Do pad from the beginning and end to account floating window results better
     if length_init > 2 * border and (border > 0):
         mix = np.pad(mix, ((0,0),(border, border)), mode='reflect')
+    
     def _getWindowingArray(window_size, fade_size):
         fadein = np.linspace(0, 1, fade_size)
         fadeout = np.linspace(1, 0, fade_size)
@@ -115,15 +129,11 @@ def demix_track(model,params, mix,mesh, hp):
         window[-fade_size:] = (window[-fade_size:]*fadeout)
         window[:fade_size] = (window[:fade_size]*fadein)
         return window
+    
     # windowingArray crossfades at segment boundaries to mitigate clicking artifacts
     windowingArray = _getWindowingArray(C, fade_size)
 
-   
-    # if config.training.target_instrument is not None:
     req_shape = (hp.model.num_stems, ) + tuple(mix.shape)
-    # else:
-    #     req_shape = (len(config.training.instruments),) + tuple(mix.shape)
-
     result = np.zeros(req_shape, dtype=jnp.float32)
     counter = np.zeros(req_shape, dtype=jnp.float32)
     i = 0
@@ -151,19 +161,24 @@ def demix_track(model,params, mix,mesh, hp):
             with mesh:
                 arr = jnp.asarray(arr)
                 x = model_apply(params,arr)
-            window = windowingArray
-            if i - step == 0:  # First audio chunk, no fadein
-                window[:fade_size] =1
-            elif i >= mix.shape[1]:  # Last audio chunk, no fadeout
-                window[-fade_size:] =1
             
-            total_add_value = jax.jit(jnp.multiply, in_shardings=(x_sharding,None),out_shardings=x_sharding)(x[..., :C],window)
+            # 动态调整窗口
+            window = windowingArray.copy()
+            if i - step == 0:  # First audio chunk, no fadein
+                window[:fade_size] = 1
+            elif i >= mix.shape[1]:  # Last audio chunk, no fadeout
+                window[-fade_size:] = 1
+            
+            # 使用vmap优化的窗口化处理
+            total_add_value = apply_windowing_vmap(x[..., :C], window)
             total_add_value = total_add_value[:batch_size-B_padding]
             total_add_value = np.asarray(total_add_value)
+            
+            # 批量处理结果累加
             for j in range(len(batch_locations)):
                 start, l = batch_locations[j]
                 result[..., start:start+l] += total_add_value[j][..., :l]
-                counter[..., start:start+l]+= window[..., :l]
+                counter[..., start:start+l] += window[..., :l]
 
             batch_data = []
             batch_locations = []
