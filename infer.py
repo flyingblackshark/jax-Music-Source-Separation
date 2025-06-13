@@ -77,13 +77,13 @@ def run_folder(args):
 
         file_name, _ = os.path.splitext(os.path.basename(path))
         
-        for i in range(res.shape[0]):
+        for i in range(len(hp.model.instruments)):
             estimates = res[i].transpose(1,0)
-            output_file = os.path.join(args.store_dir, f"{file_name}_{i}.wav")
+            output_file = os.path.join(args.store_dir, f"{file_name}_{hp.model.instruments[i]}.wav")
             sf.write(output_file, estimates, sr, subtype = 'FLOAT')
 
-        instrum_file_name = os.path.join(args.store_dir, f"{file_name}_other.wav")
-        sf.write(instrum_file_name, mix_orig.T - res.sum(0).transpose(1,0), sr, subtype = 'FLOAT')
+        # instrum_file_name = os.path.join(args.store_dir, f"{file_name}_other.wav")
+        # sf.write(instrum_file_name, mix_orig.T - res.sum(0).transpose(1,0), sr, subtype = 'FLOAT')
 
     #time.sleep(1)
     print("Elapsed time: {:.2f} sec".format(time.time() - start_time))

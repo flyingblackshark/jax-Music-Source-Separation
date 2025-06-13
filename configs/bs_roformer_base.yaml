@@ -21,6 +21,7 @@ model:
   stft_win_length: 2048
   multi_stft_hop_size: 147
   num_stems: 1
+  instruments: ['vocals']
 log:
   info_interval: 100
   eval_interval: 1000

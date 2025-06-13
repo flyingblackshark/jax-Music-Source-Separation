@@ -22,6 +22,7 @@ model:
   multi_stft_hop_size: 147
   use_shared_bias: False
   num_stems: 6
+  instruments: ['bass', 'drums', 'other', 'vocals', 'guitar', 'piano']
 log:
   info_interval: 100
   eval_interval: 1000
