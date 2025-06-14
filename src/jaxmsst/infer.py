@@ -20,7 +20,7 @@ def load_model_from_config(config_path,start_check_point):
     match hp.model.type:
         case "bs_roformer":
             from jaxmsst.models.bs_roformer import BSRoformer
-            from convert import load_bs_roformer_params
+            from jaxmsst.convert import load_bs_roformer_params
             model = BSRoformer(dim=hp.model.dim,
                                 depth=hp.model.depth,
                                 stereo=hp.model.stereo,
@@ -31,7 +31,7 @@ def load_model_from_config(config_path,start_check_point):
             params = load_bs_roformer_params(start_check_point,hp)
         case "mel_band_roformer":
             from jaxmsst.models.mel_band_roformer import MelBandRoformer
-            from convert import load_mel_band_roformer_params
+            from jaxmsst.convert import load_mel_band_roformer_params
             model = MelBandRoformer(dim=hp.model.dim,
                                     depth=hp.model.depth,
                                     stereo=hp.model.stereo,

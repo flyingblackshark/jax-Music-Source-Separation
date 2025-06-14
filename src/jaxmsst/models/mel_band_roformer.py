@@ -523,7 +523,7 @@ if __name__ =="__main__":
     # params_init = test.init(rngs,init_arr)["params"]
     # flatten_param = traverse_util.flatten_dict(params_init,sep='.')
 
-    from convert import load_params
+    from jaxmsst.convert import load_params
     params = load_params()
     output = test.apply({"params":params},jnp.ones((1,2,16000)),deterministic=True)
     flatten_param = traverse_util.flatten_dict(params,sep='.')
