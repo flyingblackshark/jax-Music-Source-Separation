@@ -89,106 +89,144 @@ def run_folder(args):
     print("Elapsed time: {:.2f} sec".format(time.time() - start_time))
 
 
-def demix_track(model,params, mix,mesh, hp):
-    #default chunk size 
+def demix_track(model, params, mix, mesh, hp):
+    """优化的音频分离函数
+    
+    Args:
+        model: JAX模型
+        params: 模型参数
+        mix: 输入音频混合信号 (channels, samples)
+        mesh: JAX设备网格
+        hp: 超参数配置
+    
+    Returns:
+        estimated_sources: 分离后的音频源 (num_stems, channels, samples)
+    """
+    # 提取配置参数
     C = hp.inference.chunk_size
     N = hp.inference.num_overlap
     fade_size = C // 10
     step = int(C // N)
     border = C - step
     batch_size = hp.inference.batch_size
-
-    x_sharding = NamedSharding(mesh,PartitionSpec('data'))
-    @partial(jax.jit, in_shardings=(None,x_sharding),
-                    out_shardings=x_sharding)
-    def model_apply(params, x):
-        return model.apply({'params': params}, x , deterministic=True)
     
-    # 使用vmap优化的窗口化函数
+    # 输入验证
+    if mix.ndim != 2:
+        raise ValueError(f"Expected 2D input (channels, samples), got {mix.ndim}D")
+    
+    length_init = mix.shape[-1]
+    
+    # 设置分片策略
+    x_sharding = NamedSharding(mesh, PartitionSpec('data'))
+    
+    # JIT编译的模型推理函数
+    @partial(jax.jit, in_shardings=(None, x_sharding), out_shardings=x_sharding)
+    def model_apply(params, x):
+        return model.apply({'params': params}, x, deterministic=True)
+    
+    # 优化的窗口化函数
     @partial(jax.jit, in_shardings=(x_sharding, None), out_shardings=x_sharding)
     def apply_windowing_vmap(x_batch, window):
         return jax.vmap(lambda x: x * window)(x_batch)
     
-    # 使用vmap优化的结果累加函数
-    @jax.jit
-    def accumulate_results_vmap(results, windows, starts, lengths):
-        def accumulate_single(result, window, start, length):
-            return result[:length], window[:length], start
-        return jax.vmap(accumulate_single)(results, windows, starts, lengths)
-    
-    length_init = mix.shape[-1]
-
-    # Do pad from the beginning and end to account floating window results better
-    if length_init > 2 * border and (border > 0):
-        mix = np.pad(mix, ((0,0),(border, border)), mode='reflect')
-    
-    def _getWindowingArray(window_size, fade_size):
-        fadein = np.linspace(0, 1, fade_size)
-        fadeout = np.linspace(1, 0, fade_size)
-        window = np.ones(window_size)
-        window[-fade_size:] = (window[-fade_size:]*fadeout)
-        window[:fade_size] = (window[:fade_size]*fadein)
+    # 预计算窗口数组
+    def _create_windowing_array(window_size: int, fade_size: int) -> np.ndarray:
+        """创建带淡入淡出的窗口数组"""
+        window = np.ones(window_size, dtype=np.float32)
+        if fade_size > 0:
+            fadein = np.linspace(0, 1, fade_size, dtype=np.float32)
+            fadeout = np.linspace(1, 0, fade_size, dtype=np.float32)
+            window[:fade_size] *= fadein
+            window[-fade_size:] *= fadeout
         return window
     
-    # windowingArray crossfades at segment boundaries to mitigate clicking artifacts
-    windowingArray = _getWindowingArray(C, fade_size)
-
-    req_shape = (hp.model.num_stems, ) + tuple(mix.shape)
-    result = np.zeros(req_shape, dtype=jnp.float32)
-    counter = np.zeros(req_shape, dtype=jnp.float32)
-    i = 0
+    # 预计算不同类型的窗口
+    base_window = _create_windowing_array(C, fade_size)
+    first_window = base_window.copy()
+    first_window[:fade_size] = 1.0  # 第一个块无淡入
+    last_window = base_window.copy()
+    last_window[-fade_size:] = 1.0  # 最后一个块无淡出
+    
+    # 音频预处理：边界填充
+    if length_init > 2 * border and border > 0:
+        mix = np.pad(mix, ((0, 0), (border, border)), mode='reflect')
+    
+    # 初始化结果数组
+    req_shape = (hp.model.num_stems,) + tuple(mix.shape)
+    result = np.zeros(req_shape, dtype=np.float32)
+    counter = np.zeros(req_shape, dtype=np.float32)
+    
+    # 批处理变量
     batch_data = []
     batch_locations = []
-
+    i = 0
+    total_chunks = (mix.shape[1] - C) // step + 1
+    
+    # 主处理循环
     while i < mix.shape[1]:
+        # 提取音频块
         part = mix[:, i:i + C]
         length = part.shape[-1]
+        
+        # 处理不完整的块
         if length < C:
-            if length > C // 2 + 1:
-                part = np.pad(part,((0,0),(0,C-length)),mode='reflect')
-            else:
-                part = np.pad(part,((0,0),(0,C-length)),mode='constant')
+            pad_mode = 'reflect' if length > C // 2 + 1 else 'constant'
+            part = np.pad(part, ((0, 0), (0, C - length)), mode=pad_mode)
+        
         batch_data.append(part)
         batch_locations.append((i, length))
         i += step
-
-        if len(batch_data) >= batch_size or (i >= mix.shape[1]):
+        
+        # 批处理推理
+        if len(batch_data) >= batch_size or i >= mix.shape[1]:
+            current_batch_size = len(batch_data)
+            
+            # 准备批次数据
             arr = np.stack(batch_data, axis=0)
-            B_padding = max((batch_size-len(batch_data)),0)
-            arr = np.pad(arr,((0,B_padding),(0,0),(0,0)))
-
-            # infer
+            if current_batch_size < batch_size:
+                # 填充到批次大小
+                padding_size = batch_size - current_batch_size
+                arr = np.pad(arr, ((0, padding_size), (0, 0), (0, 0)))
+            
+            # 模型推理
             with mesh:
-                arr = jnp.asarray(arr)
-                x = model_apply(params,arr)
+                arr_jax = jnp.asarray(arr)
+                x = model_apply(params, arr_jax)
             
-            # 动态调整窗口
-            window = windowingArray.copy()
-            if i - step == 0:  # First audio chunk, no fadein
-                window[:fade_size] = 1
-            elif i >= mix.shape[1]:  # Last audio chunk, no fadeout
-                window[-fade_size:] = 1
+            # 选择合适的窗口
+            chunk_idx = (i - step) // step
+            if chunk_idx == 0:
+                window = first_window
+            elif i >= mix.shape[1]:
+                window = last_window
+            else:
+                window = base_window
             
-            # 使用vmap优化的窗口化处理
-            total_add_value = apply_windowing_vmap(x[..., :C], window)
-            total_add_value = total_add_value[:batch_size-B_padding]
-            total_add_value = np.asarray(total_add_value)
+            # 应用窗口化
+            windowed_output = apply_windowing_vmap(x[..., :C], window)
+            windowed_output = windowed_output[:current_batch_size]
+            windowed_output = np.asarray(windowed_output)
             
-            # 批量处理结果累加
-            for j in range(len(batch_locations)):
-                start, l = batch_locations[j]
-                result[..., start:start+l] += total_add_value[j][..., :l]
-                counter[..., start:start+l] += window[..., :l]
-
-            batch_data = []
-            batch_locations = []
-
-    estimated_sources = result / counter
-    np.nan_to_num(estimated_sources, copy=False, nan=0.0)
-
-    if length_init > 2 * border and (border > 0):
-        # Remove pad
+            # 累加结果
+            for j, (start, length) in enumerate(batch_locations):
+                end = start + length
+                result[..., start:end] += windowed_output[j][..., :length]
+                counter[..., start:end] += window[:length]
+            
+            # 清空批次
+            batch_data.clear()
+            batch_locations.clear()
+    
+    # 后处理：归一化和去除填充
+    with np.errstate(divide='ignore', invalid='ignore'):
+        estimated_sources = np.divide(result, counter, 
+                                    out=np.zeros_like(result), 
+                                    where=counter != 0)
+    
+    # 移除边界填充
+    if length_init > 2 * border and border > 0:
         estimated_sources = estimated_sources[..., border:-border]
+    
     return estimated_sources
 
 if __name__ == "__main__":
