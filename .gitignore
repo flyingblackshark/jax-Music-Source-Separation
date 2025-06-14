@@ -169,4 +169,3 @@ output/
 .conda/
 MelBandRoformer.ckpt
 logic_roformer.pt
-models/
