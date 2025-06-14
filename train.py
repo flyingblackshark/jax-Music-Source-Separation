@@ -21,7 +21,7 @@ from profiling import memory_usage_params
 from einops import einsum, rearrange, pack, unpack,repeat
 from omegaconf import OmegaConf
 import argparse
-jax.experimental.compilation_cache.compilation_cache.set_cache_dir("jit_cache")
+jax.experimental.compilation_cache.compilation_cache.set_cache_dir("/tmp/jit_cache")
 
 class Trainer:
 

@@ -12,7 +12,7 @@ import jax
 from jax.experimental.compilation_cache import compilation_cache as cc
 import time
 from omegaconf import OmegaConf
-cc.set_cache_dir("./jax_cache")
+cc.set_cache_dir("/tmp/jit_cache")
 def load_model_from_config(config_path,start_check_point):
     hp = OmegaConf.load(config_path)
     model = None

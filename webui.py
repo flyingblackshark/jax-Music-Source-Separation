@@ -12,7 +12,7 @@ from infer import load_model_from_config,demix_track
 import os
 from omegaconf import OmegaConf
 from functools import partial
-cc.set_cache_dir("./jax_cache")
+cc.set_cache_dir("/tmp/jit_cache")
 
 # 从配置文件加载模型选项
 def load_model_config_options(config_path):
