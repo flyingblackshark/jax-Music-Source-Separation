@@ -16,7 +16,7 @@ from jax import random
 from jax.experimental import mesh_utils
 from jax.sharding import Mesh, NamedSharding, PartitionSpec
 from jax.stages import Compiled, Wrapped
-from models.bs_roformer import BSRoformer
+from jaxmsst.models.bs_roformer import BSRoformer
 from jaxmsst.profiling import memory_usage_params
 from einops import einsum, rearrange, pack, unpack,repeat
 from omegaconf import OmegaConf
