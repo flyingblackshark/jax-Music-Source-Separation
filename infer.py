@@ -193,8 +193,6 @@ def demix_track(model,params, mix,mesh, hp):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--model_type", type=str, default=os.getenv('MODEL_TYPE', 'bs_roformer'),
-    #                     help="One of bs_roformer, mel_band_roformer")
     parser.add_argument("--config_path", type=str, default=os.getenv('CONFIG_PATH', './configs/bs_roformer_base.yaml'),
                         help="path to config file")
     parser.add_argument("--start_check_point", type=str,

@@ -1,3 +1,4 @@
+import argparse
 import librosa
 import numpy as np
 from jax.experimental import mesh_utils
@@ -14,8 +15,7 @@ from functools import partial
 cc.set_cache_dir("./jax_cache")
 
 # 从配置文件加载模型选项
-def load_model_config_options():
-    config_path = "configs/webui/model_options.yaml"
+def load_model_config_options(config_path):
     config = OmegaConf.load(config_path)
     model_options = {}
     for name, options in config.model_options.items():
@@ -57,7 +57,6 @@ def initialize_jax_for_gpu():
         num_processes=int(os.getenv("NNODES")),
         process_id=int(os.getenv("NODE_RANK")),
     )
-    max_logging.log(f"JAX global devices: {jax.devices()}")
 
 
 def maybe_initialize_jax_distributed_system():
@@ -68,8 +67,12 @@ def maybe_initialize_jax_distributed_system():
     jax.distributed.initialize()
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config_path", type=str, default=os.getenv('CONFIG_PATH', 'configs/webui/model_options.yaml'),
+                        help="path to config file")
+    args = parser.parse_args()
     maybe_initialize_jax_distributed_system()
-    configs = load_model_config_options()
+    configs = load_model_config_options(args.config_path)
     # 动态创建输出组件，根据第一个模型配置的instruments数量
     first_config = list(configs.keys())[0]
     config_path, _ = configs[first_config]

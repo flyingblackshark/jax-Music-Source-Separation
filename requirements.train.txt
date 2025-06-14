@@ -9,3 +9,5 @@ array_record
 grain
 loguru
 OmegaConf
+torch==2.5.1
+torchvision==0.20.1
