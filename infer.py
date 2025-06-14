@@ -71,7 +71,7 @@ def run_folder(args):
         if len(mix.shape) == 1:
             mix = np.stack([mix, mix], axis=0)
 
-        mix_orig = mix.copy()
+        #mix_orig = mix.copy()
 
         res = demix_track(model,params,mix,mesh,hp)
 
