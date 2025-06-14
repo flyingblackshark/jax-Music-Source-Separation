@@ -94,4 +94,4 @@ if __name__ == "__main__":
         description=f"上传音频文件，输出分离后的{len(instruments)}种乐器: {', '.join(instruments)}"
     )
     iface.queue()
-    iface.launch()
+    iface.launch(server_name="0.0.0.0")
