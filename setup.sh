@@ -109,5 +109,5 @@ else
   exit 1
 fi
 
-# Install maxdiffusion
-# pip3 install -U . || echo "Failed to install maxdiffusion" >&2
+# Install jaxmsst
+pip3 install -U . || echo "Failed to install jaxmsst" >&2
