@@ -3,7 +3,7 @@ from loguru import logger
 from contextlib import nullcontext
 from dataclasses import dataclass
 from typing import Any, List, Optional, Tuple, cast, Dict
-from bsr_dataset import get_datasets,preprocessing_pipeline
+from jaxmsst.bsr_dataset import get_datasets,preprocessing_pipeline
 import jax
 import jax.experimental.compilation_cache.compilation_cache
 import jax.numpy as jnp
@@ -17,7 +17,7 @@ from jax.experimental import mesh_utils
 from jax.sharding import Mesh, NamedSharding, PartitionSpec
 from jax.stages import Compiled, Wrapped
 from models.bs_roformer import BSRoformer
-from profiling import memory_usage_params
+from jaxmsst.profiling import memory_usage_params
 from einops import einsum, rearrange, pack, unpack,repeat
 from omegaconf import OmegaConf
 import argparse
@@ -211,7 +211,17 @@ class Trainer:
         self.bsr_train_state=self.checkpoint_manager.restore(step)
         self.init_step = step + 1
 
-def main(args):
+def main():
+    """Main entry point for the training script."""
+    jax.config.update("jax_default_prng_impl", "unsafe_rbg")
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--config", type=str, default='./configs/base.yaml', help="Config File for Train")
+    parser.add_argument("--hardware",default="tpu", type=str, help="Hardware Type")
+    args = parser.parse_args()
+    _main_with_args(args)
+
+
+def _main_with_args(args):
     """
     Arguments:
         n_epochs: Number of epochs to train for.
@@ -283,10 +293,5 @@ def main(args):
         #     return
 
 if __name__ == "__main__":
-    jax.config.update("jax_default_prng_impl", "unsafe_rbg")
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default='./configs/base.yaml', help="Config File for Train")
-    parser.add_argument("--hardware",default="tpu", type=str, help="Hardware Type")
-    args = parser.parse_args()
-    main(args)
+    main()
     

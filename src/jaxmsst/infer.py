@@ -229,7 +229,8 @@ def demix_track(model, params, mix, mesh, hp):
     
     return estimated_sources
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the inference script."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", type=str, default=os.getenv('CONFIG_PATH', './configs/bs_roformer_base.yaml'),
                         help="path to config file")
@@ -242,3 +243,7 @@ if __name__ == "__main__":
                         help="path to store results as wav file")
     args = parser.parse_args()
     run_folder(args)
+
+
+if __name__ == "__main__":
+    main()

@@ -8,7 +8,7 @@ from jax.experimental import mesh_utils
 import jax
 import numpy as np
 from jax.experimental.compilation_cache import compilation_cache as cc
-from infer import load_model_from_config,demix_track
+from jaxmsst.infer import load_model_from_config,demix_track
 import os
 from omegaconf import OmegaConf
 from functools import partial
@@ -66,7 +66,8 @@ def maybe_initialize_jax_distributed_system():
   else:
     jax.distributed.initialize()
 
-if __name__ == "__main__":
+def main():
+    """Main entry point for the web UI."""
     parser = argparse.ArgumentParser()
     parser.add_argument("--config_path", type=str, default=os.getenv('CONFIG_PATH', 'configs/webui/model_options.yaml'),
                         help="path to config file")
@@ -95,3 +96,7 @@ if __name__ == "__main__":
     )
     iface.queue()
     iface.launch(server_name="0.0.0.0")
+
+
+if __name__ == "__main__":
+    main()

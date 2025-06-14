@@ -3,10 +3,15 @@ jaxlib>=0.4.30
 flax>=0.10.2
 optax>=0.2.3
 argparse
-flax
-#audax
 einops
 librosa
 OmegaConf
 torch==2.5.1
 torchvision==0.20.1
+gradio
+loguru
+orbax-checkpoint
+chex
+loguru
+tensorflow>=2.17.0
+grain-nightly==0.0.10

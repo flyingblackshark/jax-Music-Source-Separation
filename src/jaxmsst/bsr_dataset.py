@@ -3,7 +3,7 @@ import glob
 import tensorflow as tf
 import jax
 import grain.python as grain
-import multihost_dataloading
+import jaxmsst.multihost_dataloading
 import numpy as np
 @dataclasses.dataclass
 class ParseFeatures(grain.MapTransform):

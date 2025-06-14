@@ -1,0 +1,35 @@
+# Include the README and license files
+include README.md
+include LICENSE
+
+# Include requirements files
+include requirements.txt
+include requirements.train.txt
+
+# Include configuration files
+recursive-include configs *.yaml
+recursive-include src/jaxmsst/configs *.yaml
+
+# Include setup files
+include setup.py
+include pyproject.toml
+include setup.sh
+
+# Include Docker files
+include Dockerfile
+include msst.Dockerfile
+include .dockerignore
+
+# Include scripts
+recursive-include scripts *
+
+# Include tests
+recursive-include tests *.py
+
+# Exclude unnecessary files
+exclude .gitignore
+recursive-exclude * __pycache__
+recursive-exclude * *.py[co]
+recursive-exclude * *.so
+recursive-exclude * .DS_Store
+recursive-exclude * .git*

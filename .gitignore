@@ -168,6 +168,5 @@ output/
 .vscode/
 .conda/
 MelBandRoformer.ckpt
-infer.py
 logic_roformer.pt
 models/
