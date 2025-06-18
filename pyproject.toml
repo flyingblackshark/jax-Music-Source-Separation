@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.8"
 license = {file = "LICENSE"}
 authors = [
-    {name = "JAXMSST Team"},
+  { name="flyingblackshark", email="aliu2000@outlook.com" },
 ]
 keywords = [
     "music",

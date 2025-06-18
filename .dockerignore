@@ -9,8 +9,5 @@ __pycache__
 jax_cache/
 input/
 output/
-download.sh
-extract_deverb.sh
-install_gpu.sh
-install.sh
+dist/
 .env

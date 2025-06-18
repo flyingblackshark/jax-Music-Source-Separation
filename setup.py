@@ -16,7 +16,7 @@ with open(os.path.join(this_directory, 'requirements.txt'), encoding='utf-8') as
 setup(
     name="jaxmsst",
     version="0.1.0",
-    author="JAXMSST Team",
+    author="FlyingBlackShark",
     author_email="",
     description="JAX Music Source Separation Toolkit",
     long_description=long_description,
