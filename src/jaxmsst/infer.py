@@ -9,10 +9,9 @@ from jax.sharding import Mesh, PartitionSpec, NamedSharding
 from jax.experimental import mesh_utils
 from functools import partial
 import jax
-from jax.experimental.compilation_cache import compilation_cache as cc
 import time
 from omegaconf import OmegaConf
-cc.set_cache_dir("/tmp/jit_cache")
+
 def load_model_from_config(config_path,start_check_point):
     hp = OmegaConf.load(config_path)
     model = None
@@ -121,7 +120,7 @@ def demix_track(model, params, mix, mesh, hp):
     x_sharding = NamedSharding(mesh, PartitionSpec('data'))
     
     params = jax.device_put(params,replicate_sharding)
-    
+
     # JIT编译的模型推理函数
     @partial(jax.jit, in_shardings=(replicate_sharding, x_sharding), out_shardings=x_sharding)
     def model_apply(params, x):
