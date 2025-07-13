@@ -117,15 +117,18 @@ def demix_track(model, params, mix, mesh, hp):
     length_init = mix.shape[-1]
     
     # 设置分片策略
+    replicate_sharding = NamedSharding(mesh, PartitionSpec())
     x_sharding = NamedSharding(mesh, PartitionSpec('data'))
     
+    params = jax.device_put(params,replicate_sharding)
+    
     # JIT编译的模型推理函数
-    @partial(jax.jit, in_shardings=(None, x_sharding), out_shardings=x_sharding)
+    @partial(jax.jit, in_shardings=(replicate_sharding, x_sharding), out_shardings=x_sharding)
     def model_apply(params, x):
         return model.apply({'params': params}, x, deterministic=True)
     
     # 优化的窗口化函数
-    @partial(jax.jit, in_shardings=(x_sharding, None), out_shardings=x_sharding)
+    @partial(jax.jit, in_shardings=(x_sharding, replicate_sharding), out_shardings=x_sharding)
     def apply_windowing_vmap(x_batch, window):
         return jax.vmap(lambda x: x * window)(x_batch)
     
