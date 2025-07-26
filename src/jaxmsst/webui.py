@@ -2,8 +2,8 @@ import argparse
 import librosa
 import numpy as np
 from jax.experimental import mesh_utils
+from jax.sharding import Mesh, PartitionSpec, NamedSharding
 import jax
-import numpy as np
 from jaxmsst.infer import load_model_from_config,demix_track
 import os
 from omegaconf import OmegaConf
