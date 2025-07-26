@@ -29,8 +29,9 @@ def run_folder(input_audio,model_config_name,configs):
 
     res = demix_track(model,params,mix,mesh,hp)
     res = np.asarray(res)
+    print(f"Output dtype:{res.dtype} Output avg:{np.mean(res)} Output max:{np.max(res)} Output min:{np.min(res)}")
     res = res * 32768  # Normalize to int16 range
-    
+    print(f"Converted dtype:{res.dtype} Converted avg:{np.mean(res)} Converted max:{np.max(res)} Converted min:{np.min(res)}")
     # 根据config中instruments数量返回对应数量的音频
     instruments = hp.model.instruments
     outputs = []
