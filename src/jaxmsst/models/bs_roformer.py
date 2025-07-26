@@ -435,7 +435,7 @@ class BSRoformer(nn.Module):
 
         stft_window = jnp.hanning(self.stft_win_length)
 
-        stft_repr = jax.scipy.signal.stft(raw_audio, n_fft=self.stft_n_fft,hop_length=self.stft_hop_length,win_length=self.stft_win_length, window=stft_window)
+        stft_repr = audax.core.stft.stft(raw_audio, n_fft=self.stft_n_fft,hop_length=self.stft_hop_length,win_length=self.stft_win_length, window=stft_window)
         stft_repr = stft_repr.transpose(0,2,1)
         stft_repr = as_real(stft_repr)
 
