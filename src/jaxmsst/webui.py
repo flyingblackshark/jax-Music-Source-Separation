@@ -28,7 +28,7 @@ def run_folder(input_audio,model_config_name,configs):
         mix = np.stack([mix, mix], axis=0)
 
     res = demix_track(model,params,mix,mesh,hp)
-    res = np.asarray(res)
+    res = np.asarray(res,dtype=np.int16)
     
     # 根据config中instruments数量返回对应数量的音频
     instruments = hp.model.instruments
