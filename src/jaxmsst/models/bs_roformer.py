@@ -435,7 +435,7 @@ class BSRoformer(nn.Module):
 
         stft_window = jnp.hanning(self.stft_win_length)
 
-        stft_repr = audax.core.stft.stft(raw_audio, n_fft=self.stft_n_fft,hop_length=self.stft_hop_length,win_length=self.stft_win_length, window=stft_window)
+        stft_repr = jax.scipy.signal.stft(raw_audio, n_fft=self.stft_n_fft,hop_length=self.stft_hop_length,win_length=self.stft_win_length, window=stft_window)
         stft_repr = stft_repr.transpose(0,2,1)
         stft_repr = as_real(stft_repr)
 
@@ -502,13 +502,14 @@ class BSRoformer(nn.Module):
 
         # istft
         stft_repr = rearrange(stft_repr, 'b n (f s) t -> (b n s) f t', s=audio_channels)
+        stft_repr *= stft_window.sum()
         t , recon_audio =jax.scipy.signal.istft(stft_repr,
                                                 nfft=self.stft_n_fft,
                                                 noverlap=self.stft_win_length-self.stft_hop_length,
                                                 nperseg=self.stft_win_length,
                                                 boundary=False,
                                                 input_onesided=True)
-        recon_audio *= stft_window.sum()
+        
         recon_audio = rearrange(recon_audio, '(b n s) t -> b n s t', s=audio_channels, n=self.num_stems)
         if self.num_stems == 1:
             recon_audio = rearrange(recon_audio, 'b 1 s t -> b s t')

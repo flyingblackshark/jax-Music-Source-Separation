@@ -470,14 +470,14 @@ class MelBandRoformer(nn.Module):
 
         masks_averaged = masks_summed / jnp.clip(denom,min=1e-8)
 
-        stft_repr = stft_repr * masks_averaged
-
+        stft_repr = stft_repr * masks_averaged       
         # istft
         stft_repr = rearrange(stft_repr, 'b n (f s) t -> (b n s) f t', s=audio_channels)
+        stft_repr *= stft_window.sum()
         t , recon_audio =jax.scipy.signal.istft(stft_repr,nfft=self.stft_n_fft,
             noverlap=self.stft_win_length-self.stft_hop_length,
             nperseg=self.stft_win_length,boundary=False,input_onesided=True)
-        recon_audio *= stft_window.sum()
+
         recon_audio = rearrange(recon_audio, '(b n s) t -> b n s t', s=audio_channels, n=self.num_stems)
         if self.num_stems == 1:
             recon_audio = rearrange(recon_audio, 'b 1 s t -> b s t')
