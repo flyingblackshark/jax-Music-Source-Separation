@@ -72,7 +72,7 @@ def main():
     instruments = hp.model.instruments
     
     # 创建对应数量的音频输出组件
-    outputs = [gr.Audio(type="numpy", label=f"{instrument}") for instrument in instruments]
+    outputs = [gr.Audio(type="numpy", label=f"{instrument}",format="mp3") for instrument in instruments]
     
     # 创建Gradio界面
     iface = gr.Interface(
