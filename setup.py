@@ -40,19 +40,7 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=requirements,
-    extras_require={
-        "dev": [
-            "pytest>=6.0",
-            "pytest-cov>=2.0",
-            "black>=21.0",
-            "flake8>=3.8",
-            "mypy>=0.800",
-        ],
-        "train": [
-            "wandb",
-            "tensorboard",
-        ],
-    },
+
 
     include_package_data=True,
     package_data={

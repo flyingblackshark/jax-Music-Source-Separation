@@ -38,26 +38,6 @@ dependencies = [
     "jaxlib>=0.4.30",
     "flax>=0.10.2",
     "optax>=0.2.3",
-    "argparse",
-    "einops",
-    "librosa",
-    "OmegaConf",
-    "torch==2.5.1",
-    "torchvision==0.20.1",
-    "gradio",
-]
-
-[project.optional-dependencies]
-dev = [
-    "pytest>=6.0",
-    "pytest-cov>=2.0",
-    "black>=21.0",
-    "flake8>=3.8",
-    "mypy>=0.800",
-]
-train = [
-    "wandb",
-    "tensorboard",
 ]
 
 
