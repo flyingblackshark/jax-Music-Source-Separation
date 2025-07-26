@@ -8,8 +8,6 @@ import jax.lax as lax
 import flax.linen as nn
 import numpy as np
 from librosa import filters
-import audax.core
-import audax.core.stft
 
 def exists(val):
     return val is not None
@@ -395,10 +393,12 @@ class MelBandRoformer(nn.Module):
         # to stft
         raw_audio, batch_audio_channel_packed_shape = pack_one(raw_audio, '* t')
 
-        stft_window = jnp.hanning(self.stft_win_length)
-
-        stft_repr = audax.core.stft.stft(raw_audio, n_fft=self.stft_n_fft,hop_length=self.stft_hop_length,win_length=self.stft_win_length, window=stft_window)
-        stft_repr = stft_repr.transpose(0,2,1)
+        _,_,stft_repr = jax.scipy.signal.stft(raw_audio, 
+                                            nfft=self.stft_n_fft,
+                                            noverlap=self.stft_win_length-self.stft_hop_length,
+                                            nperseg=self.stft_win_length,boundary=None)
+        spectrum_win = jnp.sin(jnp.linspace(0, jnp.pi, self.stft_win_length, endpoint=False)) ** 2
+        stft_repr *= spectrum_win.sum()
         stft_repr = as_real(stft_repr)
 
         stft_repr = unpack_one(stft_repr, batch_audio_channel_packed_shape, '* f t c')
@@ -473,7 +473,7 @@ class MelBandRoformer(nn.Module):
         stft_repr = stft_repr * masks_averaged       
         # istft
         stft_repr = rearrange(stft_repr, 'b n (f s) t -> (b n s) f t', s=audio_channels)
-        stft_repr *= stft_window.sum()
+
         t , recon_audio =jax.scipy.signal.istft(stft_repr,nfft=self.stft_n_fft,
             noverlap=self.stft_win_length-self.stft_hop_length,
             nperseg=self.stft_win_length,boundary=False,input_onesided=True)

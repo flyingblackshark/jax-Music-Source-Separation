@@ -14,4 +14,3 @@ chex
 loguru
 tensorflow>=2.13.0
 grain[parquet]>=0.2.6
-audax
