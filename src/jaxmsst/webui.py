@@ -28,15 +28,12 @@ def run_folder(input_audio,model_config_name,configs):
         mix = np.stack([mix, mix], axis=0)
 
     res = demix_track(model,params,mix,mesh,hp)
-    res = np.asarray(res)
-    print(f"Output dtype:{res.dtype} Output avg:{np.mean(res)} Output max:{np.max(res)} Output min:{np.min(res)}")
+    res = np.asarray(res,dtype=np.float32)
     res = res * 32768  # Normalize to int16 range
-    print(f"Converted dtype:{res.dtype} Converted avg:{np.mean(res)} Converted max:{np.max(res)} Converted min:{np.min(res)}")
-    # 根据config中instruments数量返回对应数量的音频
     instruments = hp.model.instruments
     outputs = []
     for i, instrument in enumerate(instruments):
-        estimate = res[i].transpose(1,0)
+        estimate = res[i].transpose(1,0).astype(np.int16)  # 转置并转换为int16
         outputs.append((44100, estimate))
     
     return outputs
@@ -89,7 +86,7 @@ def main():
         description=f"上传音频文件，输出分离后的{len(instruments)}种乐器: {', '.join(instruments)}"
     )
     iface.queue()
-    iface.launch(server_name="0.0.0.0")
+    iface.launch()
 
 
 if __name__ == "__main__":

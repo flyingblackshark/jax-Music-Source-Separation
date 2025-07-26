@@ -192,8 +192,7 @@ def demix_track(model, params, mix, mesh, hp):
             
             # 模型推理
             with mesh:
-                arr_jax = jnp.asarray(arr)
-                x = model_apply(params, arr_jax)
+                x = model_apply(params, arr)
             
             # 选择合适的窗口
             chunk_idx = (i - step) // step
@@ -204,7 +203,7 @@ def demix_track(model, params, mix, mesh, hp):
             else:
                 window = base_window
             window = jax.device_put(window,replicate_sharding)
-            
+
             # 应用窗口化
             windowed_output = apply_windowing_vmap(x[..., :C], window)
             windowed_output = windowed_output[:current_batch_size]
