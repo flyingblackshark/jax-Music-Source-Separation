@@ -203,6 +203,7 @@ def demix_track(model, params, mix, mesh, hp):
                 window = last_window
             else:
                 window = base_window
+            window = jax.device_put(window,replicate_sharding)
             
             # 应用窗口化
             windowed_output = apply_windowing_vmap(x[..., :C], window)
