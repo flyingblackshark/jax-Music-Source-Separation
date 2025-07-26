@@ -8,6 +8,7 @@ from jaxmsst.infer import load_model_from_config,demix_track
 import os
 from omegaconf import OmegaConf
 from functools import partial
+import gradio as gr
 
 # 从配置文件加载模型选项
 def load_model_config_options(config_path):
@@ -37,10 +38,6 @@ def run_folder(input_audio,model_config_name,configs):
         outputs.append((44100, estimate))
     
     return outputs
-
-
-import gradio as gr
-import librosa
 
 def initialize_jax_for_gpu():
   """Jax distribute initialize for GPUs."""
