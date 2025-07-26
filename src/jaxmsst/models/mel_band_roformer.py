@@ -477,7 +477,7 @@ class MelBandRoformer(nn.Module):
         t , recon_audio =jax.scipy.signal.istft(stft_repr,nfft=self.stft_n_fft,
             noverlap=self.stft_win_length-self.stft_hop_length,
             nperseg=self.stft_win_length,boundary=False,input_onesided=True)
-
+        recon_audio *= spectrum_win.sum()
         recon_audio = rearrange(recon_audio, '(b n s) t -> b n s t', s=audio_channels, n=self.num_stems)
         if self.num_stems == 1:
             recon_audio = rearrange(recon_audio, 'b 1 s t -> b s t')

@@ -508,6 +508,7 @@ class BSRoformer(nn.Module):
                                                 nperseg=self.stft_win_length,
                                                 boundary=False,
                                                 input_onesided=True)
+        recon_audio *= spectrum_win.sum()
 
         recon_audio = rearrange(recon_audio, '(b n s) t -> b n s t', s=audio_channels, n=self.num_stems)
         if self.num_stems == 1:
