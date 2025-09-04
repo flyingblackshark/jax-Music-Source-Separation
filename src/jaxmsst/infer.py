@@ -1,250 +1,445 @@
 import argparse
-import librosa
-import numpy as np
-import jax.numpy as jnp
-import soundfile as sf
 import glob
 import os
-from jax.sharding import Mesh, PartitionSpec, NamedSharding
-from jax.experimental import mesh_utils
-from functools import partial
-import jax
 import time
+from functools import partial
+from pathlib import Path
+from typing import Tuple, List, Optional
+
+import jax
+import jax.numpy as jnp
+import librosa
+import numpy as np
+import soundfile as sf
+from jax.experimental import mesh_utils
+from jax.sharding import Mesh, PartitionSpec, NamedSharding
 from omegaconf import OmegaConf
 
-def load_model_from_config(config_path,start_check_point):
-    hp = OmegaConf.load(config_path)
-    model = None
-    params = None
-    match hp.model.type:
-        case "bs_roformer":
-            from jaxmsst.models.bs_roformer import BSRoformer
-            from jaxmsst.convert import load_bs_roformer_params
-            model = BSRoformer(dim=hp.model.dim,
-                                depth=hp.model.depth,
-                                stereo=hp.model.stereo,
-                                num_stems=hp.model.num_stems,
-                                use_shared_bias=hp.model.use_shared_bias,
-                                time_transformer_depth=hp.model.time_transformer_depth,
-                                freq_transformer_depth=hp.model.freq_transformer_depth)
-            params = load_bs_roformer_params(start_check_point,hp)
-        case "mel_band_roformer":
-            from jaxmsst.models.mel_band_roformer import MelBandRoformer
-            from jaxmsst.convert import load_mel_band_roformer_params
-            model = MelBandRoformer(dim=hp.model.dim,
-                                    depth=hp.model.depth,
-                                    stereo=hp.model.stereo,
-                                    time_transformer_depth=hp.model.time_transformer_depth,
-                                    freq_transformer_depth=hp.model.freq_transformer_depth)
-            params = load_mel_band_roformer_params(start_check_point,hp)
-        case _:
-            raise Exception("unknown model")
-    return model,params,hp
-def run_folder(args):
-    start_time = time.time()
-    model,params,hp = load_model_from_config(args.config_path,args.start_check_point)
-    all_mixtures_path = glob.glob(args.input_folder + '/*.*')
-    all_mixtures_path.sort()
-    print('Total files found: {}'.format(len(all_mixtures_path)))
-
-    # instruments = config.training.instruments
-    # if config.training.target_instrument is not None:
-    #     instruments = [config.training.target_instrument]
-
-    if not os.path.isdir(args.store_dir):
-        os.mkdir(args.store_dir)
-
-    # if not verbose:
-    #     all_mixtures_path = tqdm(all_mixtures_path, desc="Total progress")
-    device_mesh = mesh_utils.create_device_mesh((jax.device_count(),))
-    mesh = Mesh(devices=device_mesh, axis_names=('data'))
-    for path in all_mixtures_path:
-        print("Starting processing track: ", path)
-        try:
-            mix, sr = librosa.load(path, sr=44100, mono=False)
-        except Exception as e:
-            print('Can read track: {}'.format(path))
-            print('Error message: {}'.format(str(e)))
-            continue
-
-        if len(mix.shape) == 1:
-            mix = np.stack([mix, mix], axis=0)
-
-        #mix_orig = mix.copy()
-
-        res = demix_track(model,params,mix,mesh,hp)
-
-        file_name, _ = os.path.splitext(os.path.basename(path))
-        
-        for i in range(len(hp.model.instruments)):
-            estimates = res[i].transpose(1,0)
-            output_file = os.path.join(args.store_dir, f"{file_name}_{hp.model.instruments[i]}.wav")
-            sf.write(output_file, estimates, sr, subtype = 'FLOAT')
-
-        # instrum_file_name = os.path.join(args.store_dir, f"{file_name}_other.wav")
-        # sf.write(instrum_file_name, mix_orig.T - res.sum(0).transpose(1,0), sr, subtype = 'FLOAT')
-
-    #time.sleep(1)
-    print("Elapsed time: {:.2f} sec".format(time.time() - start_time))
-
-
-def demix_track(model, params, mix, mesh, hp):
-    """优化的音频分离函数
+def load_model_from_config(config_path: str, start_check_point: str) -> Tuple[object, dict, OmegaConf]:
+    """加载模型配置和参数
     
     Args:
-        model: JAX模型
-        params: 模型参数
-        mix: 输入音频混合信号 (channels, samples)
-        mesh: JAX设备网格
-        hp: 超参数配置
+        config_path: 配置文件路径
+        start_check_point: 检查点文件路径
+        
+    Returns:
+        Tuple[model, params, hp]: 模型实例、参数和超参数配置
+        
+    Raises:
+        FileNotFoundError: 配置文件不存在
+        ValueError: 未知的模型类型
+    """
+    if not Path(config_path).exists():
+        raise FileNotFoundError(f"配置文件不存在: {config_path}")
+        
+    hp = OmegaConf.load(config_path)
+    
+    if not hasattr(hp, 'model') or not hasattr(hp.model, 'type'):
+        raise ValueError("配置文件中缺少模型类型定义")
+    
+    model_type = hp.model.type.lower()
+    
+    if model_type == "bs_roformer":
+        from jaxmsst.models.bs_roformer import BSRoformer
+        from jaxmsst.convert import load_bs_roformer_params
+        
+        model = BSRoformer(
+            dim=hp.model.dim,
+            depth=hp.model.depth,
+            stereo=hp.model.stereo,
+            num_stems=hp.model.num_stems,
+            use_shared_bias=hp.model.use_shared_bias,
+            time_transformer_depth=hp.model.time_transformer_depth,
+            freq_transformer_depth=hp.model.freq_transformer_depth
+        )
+        params = load_bs_roformer_params(start_check_point, hp)
+        
+    elif model_type == "mel_band_roformer":
+        from jaxmsst.models.mel_band_roformer import MelBandRoformer
+        from jaxmsst.convert import load_mel_band_roformer_params
+        
+        model = MelBandRoformer(
+            dim=hp.model.dim,
+            depth=hp.model.depth,
+            stereo=hp.model.stereo,
+            time_transformer_depth=hp.model.time_transformer_depth,
+            freq_transformer_depth=hp.model.freq_transformer_depth
+        )
+        params = load_mel_band_roformer_params(start_check_point, hp)
+        
+    else:
+        raise ValueError(f"未知的模型类型: {model_type}")
+        
+    return model, params, hp
+def run_folder(args) -> None:
+    """批量处理文件夹中的音频文件
+    
+    Args:
+        args: 命令行参数对象
+    """
+    start_time = time.time()
+    
+    try:
+        model, params, hp = load_model_from_config(args.config_path, args.start_check_point)
+    except Exception as e:
+        print(f"加载模型失败: {e}")
+        return
+    
+    # 获取输入文件列表
+    input_path = Path(args.input_folder)
+    if not input_path.exists():
+        print(f"输入文件夹不存在: {args.input_folder}")
+        return
+        
+    # 支持的音频格式
+    audio_extensions = ['*.wav', '*.mp3', '*.flac', '*.m4a', '*.aac']
+    all_mixtures_path = []
+    for ext in audio_extensions:
+        all_mixtures_path.extend(input_path.glob(ext))
+        all_mixtures_path.extend(input_path.glob(ext.upper()))
+    
+    all_mixtures_path = sorted([str(p) for p in all_mixtures_path])
+    
+    if not all_mixtures_path:
+        print(f"在 {args.input_folder} 中未找到支持的音频文件")
+        return
+        
+    print(f'找到音频文件总数: {len(all_mixtures_path)}')
+
+    # 创建输出目录
+    output_path = Path(args.store_dir)
+    output_path.mkdir(parents=True, exist_ok=True)
+
+    # 初始化JAX设备网格
+    device_mesh = mesh_utils.create_device_mesh((jax.device_count(),))
+    mesh = Mesh(devices=device_mesh, axis_names=('data',))
+    
+    # 处理统计
+    processed_count = 0
+    failed_count = 0
+    
+    for idx, path in enumerate(all_mixtures_path, 1):
+        print(f"[{idx}/{len(all_mixtures_path)}] 处理音频: {Path(path).name}")
+        
+        try:
+            # 加载音频文件
+            mix, sr = librosa.load(path, sr=44100, mono=False)
+            
+            # 确保立体声格式
+            if mix.ndim == 1:
+                mix = np.stack([mix, mix], axis=0)
+            elif mix.ndim == 2 and mix.shape[0] > 2:
+                # 如果有多个声道，只取前两个
+                mix = mix[:2]
+
+            # 执行音频分离
+            separated_sources = demix_track(model, params, mix, mesh, hp)
+
+            # 保存分离结果
+            file_name = Path(path).stem
+            
+            for i, instrument in enumerate(hp.model.instruments):
+                if i < len(separated_sources):
+                    estimates = separated_sources[i].transpose(1, 0)
+                    output_file = output_path / f"{file_name}_{instrument}.wav"
+                    sf.write(str(output_file), estimates, sr, subtype='FLOAT')
+            
+            processed_count += 1
+            print(f"  ✓ 处理完成")
+            
+        except Exception as e:
+            failed_count += 1
+            print(f"  ✗ 处理失败: {e}")
+            continue
+
+    # 输出处理统计
+    elapsed_time = time.time() - start_time
+    print(f"\n处理完成!")
+    print(f"成功处理: {processed_count} 个文件")
+    print(f"处理失败: {failed_count} 个文件")
+    print(f"总耗时: {elapsed_time:.2f} 秒")
+    if processed_count > 0:
+        print(f"平均每个文件: {elapsed_time/processed_count:.2f} 秒")
+
+
+def demix_track(model, params, mix: np.ndarray, mesh: Mesh, hp: OmegaConf) -> np.ndarray:
+    """音频分离核心函数
+    
+    使用滑动窗口和批处理技术对音频进行源分离，支持GPU加速和内存优化。
+    
+    Args:
+        model: JAX模型实例
+        params: 模型参数字典
+        mix: 输入音频混合信号，形状为 (channels, samples)
+        mesh: JAX设备网格，用于分布式计算
+        hp: 超参数配置对象
     
     Returns:
-        estimated_sources: 分离后的音频源 (num_stems, channels, samples)
+        estimated_sources: 分离后的音频源，形状为 (num_stems, channels, samples)
+        
+    Raises:
+        ValueError: 输入音频维度不正确
     """
-    # 提取配置参数
-    C = hp.inference.chunk_size
-    N = hp.inference.num_overlap
-    fade_size = C // 10
-    step = int(C // N)
-    border = C - step
+    # 提取和验证配置参数
+    chunk_size = hp.inference.chunk_size
+    num_overlap = hp.inference.num_overlap
+    fade_size = chunk_size // 10
+    step_size = chunk_size // num_overlap
+    border_size = chunk_size - step_size
     batch_size = hp.inference.batch_size
     
     # 输入验证
     if mix.ndim != 2:
-        raise ValueError(f"Expected 2D input (channels, samples), got {mix.ndim}D")
+        raise ValueError(f"输入音频应为2维 (channels, samples)，实际为 {mix.ndim} 维")
     
-    length_init = mix.shape[-1]
+    if mix.shape[0] > 2:
+        print(f"警告: 输入音频有 {mix.shape[0]} 个声道，将只使用前2个声道")
+        mix = mix[:2]
     
-    # 设置分片策略
+    original_length = mix.shape[-1]
+    
+    # 验证配置参数的合理性
+    if chunk_size <= 0 or step_size <= 0:
+        raise ValueError(f"无效的块大小配置: chunk_size={chunk_size}, step_size={step_size}")
+    
+    if batch_size <= 0:
+        raise ValueError(f"无效的批处理大小: {batch_size}")
+    
+    # 设置JAX分片策略
     replicate_sharding = NamedSharding(mesh, PartitionSpec())
-    x_sharding = NamedSharding(mesh, PartitionSpec('data'))
+    data_sharding = NamedSharding(mesh, PartitionSpec('data'))
     
-    params = jax.device_put(params,replicate_sharding)
+    # 将参数放置到设备上
+    params = jax.device_put(params, replicate_sharding)
 
     # JIT编译的模型推理函数
-    @partial(jax.jit, in_shardings=(replicate_sharding, x_sharding), out_shardings=x_sharding)
-    def model_apply(params, x):
+    @partial(jax.jit, 
+             in_shardings=(replicate_sharding, data_sharding), 
+             out_shardings=data_sharding)
+    def model_inference(params, x):
+        """JIT编译的模型推理函数"""
         return model.apply({'params': params}, x, deterministic=True)
     
-    # 优化的窗口化函数
-    @partial(jax.jit, in_shardings=(x_sharding, replicate_sharding), out_shardings=x_sharding)
-    def apply_windowing_vmap(x_batch, window):
+    # JIT编译的窗口化函数
+    @partial(jax.jit, 
+             in_shardings=(data_sharding, replicate_sharding), 
+             out_shardings=data_sharding)
+    def apply_windowing_batch(x_batch, window):
+        """批量应用窗口函数"""
         return jax.vmap(lambda x: x * window)(x_batch)
     
-    # 预计算窗口数组
-    def _create_windowing_array(window_size: int, fade_size: int) -> np.ndarray:
-        """创建带淡入淡出的窗口数组"""
+    def _create_fade_window(window_size: int, fade_size: int) -> np.ndarray:
+        """创建带淡入淡出效果的窗口数组
+        
+        Args:
+            window_size: 窗口大小
+            fade_size: 淡入淡出大小
+            
+        Returns:
+            窗口数组
+        """
         window = np.ones(window_size, dtype=np.float32)
-        if fade_size > 0:
-            fadein = np.linspace(0, 1, fade_size, dtype=np.float32)
-            fadeout = np.linspace(1, 0, fade_size, dtype=np.float32)
-            window[:fade_size] *= fadein
-            window[-fade_size:] *= fadeout
+        if fade_size > 0 and fade_size < window_size // 2:
+            # 淡入效果
+            fade_in = np.linspace(0, 1, fade_size, dtype=np.float32)
+            window[:fade_size] = fade_in
+            # 淡出效果
+            fade_out = np.linspace(1, 0, fade_size, dtype=np.float32)
+            window[-fade_size:] = fade_out
         return window
     
-    # 预计算不同类型的窗口
-    base_window = _create_windowing_array(C, fade_size)
+    # 预计算窗口数组
+    base_window = _create_fade_window(chunk_size, fade_size)
     first_window = base_window.copy()
-    first_window[:fade_size] = 1.0  # 第一个块无淡入
+    first_window[:fade_size] = 1.0  # 第一个块不需要淡入
     last_window = base_window.copy()
-    last_window[-fade_size:] = 1.0  # 最后一个块无淡出
+    last_window[-fade_size:] = 1.0  # 最后一个块不需要淡出
     
-    # 音频预处理：边界填充
-    if length_init > 2 * border and border > 0:
-        mix = np.pad(mix, ((0, 0), (border, border)), mode='reflect')
+    # 音频预处理：边界填充以减少边界效应
+    if original_length > 2 * border_size and border_size > 0:
+        mix = np.pad(mix, ((0, 0), (border_size, border_size)), mode='reflect')
     
-    # 初始化结果数组
-    req_shape = (hp.model.num_stems,) + tuple(mix.shape)
-    result = np.zeros(req_shape, dtype=np.float32)
-    counter = np.zeros(req_shape, dtype=np.float32)
+    # 初始化结果累积数组
+    result_shape = (hp.model.num_stems,) + tuple(mix.shape)
+    accumulated_result = np.zeros(result_shape, dtype=np.float32)
+    overlap_counter = np.zeros(result_shape, dtype=np.float32)
     
-    # 批处理变量
-    batch_data = []
-    batch_locations = []
-    i = 0
-    total_chunks = (mix.shape[1] - C) // step + 1
+    # 批处理状态变量
+    batch_chunks = []
+    batch_positions = []
+    current_position = 0
     
-    # 主处理循环
-    while i < mix.shape[1]:
-        # 提取音频块
-        part = mix[:, i:i + C]
-        length = part.shape[-1]
+    # 计算总块数用于进度显示
+    total_chunks = max(1, (mix.shape[1] - chunk_size) // step_size + 1)
+    
+    # 主处理循环：滑动窗口处理
+    while current_position < mix.shape[1]:
+        # 提取当前音频块
+        chunk_end = min(current_position + chunk_size, mix.shape[1])
+        audio_chunk = mix[:, current_position:chunk_end]
+        actual_length = audio_chunk.shape[-1]
         
-        # 处理不完整的块
-        if length < C:
-            pad_mode = 'reflect' if length > C // 2 + 1 else 'constant'
-            part = np.pad(part, ((0, 0), (0, C - length)), mode=pad_mode)
+        # 处理不完整的块（末尾块）
+        if actual_length < chunk_size:
+            # 根据块的大小选择填充策略
+            pad_mode = 'reflect' if actual_length > chunk_size // 2 else 'constant'
+            pad_width = ((0, 0), (0, chunk_size - actual_length))
+            audio_chunk = np.pad(audio_chunk, pad_width, mode=pad_mode)
         
-        batch_data.append(part)
-        batch_locations.append((i, length))
-        i += step
+        # 添加到批处理队列
+        batch_chunks.append(audio_chunk)
+        batch_positions.append((current_position, actual_length))
+        current_position += step_size
         
-        # 批处理推理
-        if len(batch_data) >= batch_size or i >= mix.shape[1]:
-            current_batch_size = len(batch_data)
+        # 执行批处理推理
+        if len(batch_chunks) >= batch_size or current_position >= mix.shape[1]:
+            current_batch_size = len(batch_chunks)
             
-            # 准备批次数据
-            arr = np.stack(batch_data, axis=0)
+            # 准备批处理数据
+            batch_array = np.stack(batch_chunks, axis=0)
+            
+            # 如果批次不满，填充到完整批次大小
             if current_batch_size < batch_size:
-                # 填充到批次大小
-                padding_size = batch_size - current_batch_size
-                arr = np.pad(arr, ((0, padding_size), (0, 0), (0, 0)))
+                padding_needed = batch_size - current_batch_size
+                pad_shape = ((0, padding_needed), (0, 0), (0, 0))
+                batch_array = np.pad(batch_array, pad_shape, mode='constant')
             
-            # 模型推理
-            with mesh:
-                x = model_apply(params, arr)
+            # 执行模型推理
+            try:
+                with mesh:
+                    inference_output = model_inference(params, batch_array)
+                
+                # 确定当前批次使用的窗口类型
+                batch_start_idx = (current_position - step_size * current_batch_size) // step_size
+                
+                # 为每个块选择合适的窗口
+                for j in range(current_batch_size):
+                    chunk_idx = batch_start_idx + j
+                    
+                    if chunk_idx == 0:
+                        window = first_window
+                    elif current_position >= mix.shape[1] and j == current_batch_size - 1:
+                        window = last_window
+                    else:
+                        window = base_window
+                    
+                    # 将窗口放置到设备上
+                    device_window = jax.device_put(window, replicate_sharding)
+                    
+                    # 应用窗口化到单个输出
+                    single_output = inference_output[j:j+1, ..., :chunk_size]
+                    windowed_single = apply_windowing_batch(single_output, device_window)
+                    windowed_result = np.asarray(windowed_single[0])
+                    
+                    # 累加到结果数组
+                    start_pos, actual_len = batch_positions[j]
+                    end_pos = start_pos + actual_len
+                    
+                    accumulated_result[..., start_pos:end_pos] += windowed_result[..., :actual_len]
+                    overlap_counter[..., start_pos:end_pos] += window[:actual_len]
+                
+            except Exception as e:
+                print(f"批处理推理失败: {e}")
+                raise
             
-            # 选择合适的窗口
-            chunk_idx = (i - step) // step
-            if chunk_idx == 0:
-                window = first_window
-            elif i >= mix.shape[1]:
-                window = last_window
-            else:
-                window = base_window
-            window = jax.device_put(window,replicate_sharding)
-
-            # 应用窗口化
-            windowed_output = apply_windowing_vmap(x[..., :C], window)
-            windowed_output = windowed_output[:current_batch_size]
-            windowed_output = np.asarray(windowed_output)
-            
-            # 累加结果
-            for j, (start, length) in enumerate(batch_locations):
-                end = start + length
-                result[..., start:end] += windowed_output[j][..., :length]
-                counter[..., start:end] += window[:length]
-            
-            # 清空批次
-            batch_data.clear()
-            batch_locations.clear()
+            # 清空批处理队列
+            batch_chunks.clear()
+            batch_positions.clear()
     
-    # 后处理：归一化和去除填充
+    # 后处理：归一化重叠区域
     with np.errstate(divide='ignore', invalid='ignore'):
-        estimated_sources = np.divide(result, counter, 
-                                    out=np.zeros_like(result), 
-                                    where=counter != 0)
+        # 避免除零错误，使用安全除法
+        estimated_sources = np.divide(
+            accumulated_result, 
+            overlap_counter,
+            out=np.zeros_like(accumulated_result), 
+            where=overlap_counter != 0
+        )
     
-    # 移除边界填充
-    if length_init > 2 * border and border > 0:
-        estimated_sources = estimated_sources[..., border:-border]
+    # 移除边界填充，恢复原始长度
+    if original_length > 2 * border_size and border_size > 0:
+        estimated_sources = estimated_sources[..., border_size:-border_size]
+    
+    # 确保输出长度与原始输入一致
+    if estimated_sources.shape[-1] != original_length:
+        estimated_sources = estimated_sources[..., :original_length]
     
     return estimated_sources
 
-def main():
-    """Main entry point for the inference script."""
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--config_path", type=str, default=os.getenv('CONFIG_PATH', './configs/bs_roformer_base.yaml'),
-                        help="path to config file")
-    parser.add_argument("--start_check_point", type=str,
-                        default=os.getenv('START_CHECK_POINT', 'deverb_bs_roformer_8_256dim_8depth.ckpt'),
-                        help="Initial checkpoint to valid weights")
-    parser.add_argument("--input_folder", type=str, default=os.getenv('INPUT_FOLDER', './input'),
-                        help="folder with mixtures to process")
-    parser.add_argument("--store_dir", type=str, default=os.getenv('STORE_DIR', './output'),
-                        help="path to store results as wav file")
+def main() -> None:
+    """音频源分离推理脚本的主入口点
+    
+    支持批量处理音频文件，使用JAX进行GPU加速推理。
+    支持的音频格式：WAV, MP3, FLAC, M4A, AAC
+    """
+    parser = argparse.ArgumentParser(
+        description='JAX音频源分离推理工具',
+        formatter_class=argparse.ArgumentDefaultsHelpFormatter
+    )
+    
+    parser.add_argument(
+        '--config_path', 
+        type=str, 
+        default=os.getenv('CONFIG_PATH', './configs/bs_roformer_base.yaml'),
+        help='模型配置文件路径'
+    )
+    
+    parser.add_argument(
+        '--start_check_point', 
+        type=str,
+        default=os.getenv('START_CHECK_POINT', 'deverb_bs_roformer_8_256dim_8depth.ckpt'),
+        help='模型检查点文件路径'
+    )
+    
+    parser.add_argument(
+        '--input_folder', 
+        type=str, 
+        default=os.getenv('INPUT_FOLDER', './input'),
+        help='包含待处理音频文件的输入文件夹路径'
+    )
+    
+    parser.add_argument(
+        '--store_dir', 
+        type=str, 
+        default=os.getenv('STORE_DIR', './output'),
+        help='分离结果保存目录路径'
+    )
+    
+    parser.add_argument(
+        '--verbose', 
+        action='store_true',
+        help='显示详细处理信息'
+    )
+    
     args = parser.parse_args()
-    run_folder(args)
+    
+    # 参数验证
+    if not Path(args.config_path).exists():
+        print(f"错误: 配置文件不存在: {args.config_path}")
+        return
+    
+    if not Path(args.input_folder).exists():
+        print(f"错误: 输入文件夹不存在: {args.input_folder}")
+        return
+    
+    # 显示运行信息
+    if args.verbose:
+        print(f"配置文件: {args.config_path}")
+        print(f"检查点文件: {args.start_check_point}")
+        print(f"输入文件夹: {args.input_folder}")
+        print(f"输出文件夹: {args.store_dir}")
+        print(f"可用JAX设备数: {jax.device_count()}")
+        print()
+    
+    try:
+        run_folder(args)
+    except KeyboardInterrupt:
+        print("\n用户中断处理")
+    except Exception as e:
+        print(f"处理过程中发生错误: {e}")
+        if args.verbose:
+            import traceback
+            traceback.print_exc()
 
 
 if __name__ == "__main__":
