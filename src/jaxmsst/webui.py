@@ -9,25 +9,34 @@ import os
 from omegaconf import OmegaConf
 from functools import partial
 import gradio as gr
+from jaxmsst.configs.loader import load_config
 
 # 从配置文件加载模型选项
 def load_model_config_options(config_path):
     config = OmegaConf.load(config_path)
     model_options = {}
     for name, options in config.model_options.items():
-        model_options[name] = (options.config_path, options.model_path)
+        model_options[name] = {
+            "config_path": options.config_path,
+            "model_path": options.model_path,
+            "model_config_path": getattr(options, "model_config_path", None),
+        }
     return model_options
 
 def run_folder(input_audio,model_config_name,configs):
-    config_path, model_path = configs[model_config_name]
-    model,params,hp = load_model_from_config(config_path,model_path)
+    selected = configs[model_config_name]
+    graphdef, params, hp = load_model_from_config(
+        selected["config_path"],
+        selected["model_path"],
+        model_config_path=selected["model_config_path"],
+    )
     device_mesh = mesh_utils.create_device_mesh((jax.device_count(),))
     mesh = Mesh(devices=device_mesh, axis_names=('data'))
     mix, sr = librosa.load(input_audio, sr=44100, mono=False)
     if len(mix.shape) == 1:
         mix = np.stack([mix, mix], axis=0)
 
-    res = demix_track(model,params,mix,mesh,hp)
+    res = demix_track(graphdef,params,mix,mesh,hp)
     res = np.asarray(res,dtype=np.float32)
     res = res * 32768  # Normalize to int16 range
     instruments = hp.model.instruments
@@ -66,9 +75,12 @@ def main():
     maybe_initialize_jax_distributed_system()
     configs = load_model_config_options(args.config_path)
     # 动态创建输出组件，根据第一个模型配置的instruments数量
-    first_config = list(configs.keys())[0]
-    config_path, _ = configs[first_config]
-    hp = OmegaConf.load(config_path)
+    first_config = list(configs.values())[0]
+    hp = load_config(
+        first_config["config_path"],
+        model_config_path=first_config["model_config_path"],
+        checkpoint_path=first_config["model_path"],
+    )
     instruments = hp.model.instruments
     
     # 创建对应数量的音频输出组件

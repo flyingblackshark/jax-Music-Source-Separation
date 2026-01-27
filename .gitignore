@@ -169,3 +169,7 @@ output/
 .conda/
 MelBandRoformer.ckpt
 logic_roformer.pt
+./BS-Roformer-HyperACE
+input_v2_voc/
+output_v2_voc/
+test.mp3

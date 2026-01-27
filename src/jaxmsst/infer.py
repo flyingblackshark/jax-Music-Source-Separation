@@ -6,6 +6,7 @@ from functools import partial
 from pathlib import Path
 from typing import Tuple, List, Optional
 
+from flax import nnx
 import jax
 import jax.numpy as jnp
 import librosa
@@ -15,24 +16,32 @@ from jax.experimental import mesh_utils
 from jax.sharding import Mesh, PartitionSpec, NamedSharding
 from omegaconf import OmegaConf
 
-def load_model_from_config(config_path: str, start_check_point: str) -> Tuple[object, dict, OmegaConf]:
+from jaxmsst.configs.loader import load_config
+
+def load_model_from_config(
+    config_path: str,
+    start_check_point: str,
+    model_config_path: Optional[str] = None,
+) -> Tuple[nnx.GraphDef, dict, OmegaConf]:
     """加载模型配置和参数
     
     Args:
         config_path: 配置文件路径
         start_check_point: 检查点文件路径
+        model_config_path: 模型配置文件路径(可选)
         
     Returns:
-        Tuple[model, params, hp]: 模型实例、参数和超参数配置
+        Tuple[graphdef, params, hp]: 模型定义、参数和超参数配置
         
     Raises:
         FileNotFoundError: 配置文件不存在
         ValueError: 未知的模型类型
     """
-    if not Path(config_path).exists():
-        raise FileNotFoundError(f"配置文件不存在: {config_path}")
-        
-    hp = OmegaConf.load(config_path)
+    hp = load_config(
+        config_path,
+        model_config_path=model_config_path,
+        checkpoint_path=start_check_point,
+    )
     
     if not hasattr(hp, 'model') or not hasattr(hp.model, 'type'):
         raise ValueError("配置文件中缺少模型类型定义")
@@ -50,7 +59,8 @@ def load_model_from_config(config_path: str, start_check_point: str) -> Tuple[ob
             num_stems=hp.model.num_stems,
             use_shared_bias=hp.model.use_shared_bias,
             time_transformer_depth=hp.model.time_transformer_depth,
-            freq_transformer_depth=hp.model.freq_transformer_depth
+            freq_transformer_depth=hp.model.freq_transformer_depth,
+            rngs=nnx.Rngs(0),
         )
         params = load_bs_roformer_params(start_check_point, hp)
         
@@ -63,14 +73,16 @@ def load_model_from_config(config_path: str, start_check_point: str) -> Tuple[ob
             depth=hp.model.depth,
             stereo=hp.model.stereo,
             time_transformer_depth=hp.model.time_transformer_depth,
-            freq_transformer_depth=hp.model.freq_transformer_depth
+            freq_transformer_depth=hp.model.freq_transformer_depth,
+            rngs=nnx.Rngs(0),
         )
         params = load_mel_band_roformer_params(start_check_point, hp)
         
     else:
         raise ValueError(f"未知的模型类型: {model_type}")
         
-    return model, params, hp
+    graphdef, _ = nnx.split(model, nnx.Param)
+    return graphdef, params, hp
 def run_folder(args) -> None:
     """批量处理文件夹中的音频文件
     
@@ -80,7 +92,11 @@ def run_folder(args) -> None:
     start_time = time.time()
     
     try:
-        model, params, hp = load_model_from_config(args.config_path, args.start_check_point)
+        graphdef, params, hp = load_model_from_config(
+            args.config_path,
+            args.start_check_point,
+            model_config_path=args.model_config_path,
+        )
     except Exception as e:
         print(f"加载模型失败: {e}")
         return
@@ -133,7 +149,7 @@ def run_folder(args) -> None:
                 mix = mix[:2]
 
             # 执行音频分离
-            separated_sources = demix_track(model, params, mix, mesh, hp)
+            separated_sources = demix_track(graphdef, params, mix, mesh, hp)
 
             # 保存分离结果
             file_name = Path(path).stem
@@ -162,7 +178,7 @@ def run_folder(args) -> None:
         print(f"平均每个文件: {elapsed_time/processed_count:.2f} 秒")
 
 
-def demix_track(model, params, mix: np.ndarray, mesh: Mesh, hp: OmegaConf) -> np.ndarray:
+def demix_track(graphdef, params, mix: np.ndarray, mesh: Mesh, hp: OmegaConf) -> np.ndarray:
     """音频分离核心函数
     
     使用滑动窗口和批处理技术对音频进行源分离，支持GPU加速和内存优化。
@@ -218,15 +234,13 @@ def demix_track(model, params, mix: np.ndarray, mesh: Mesh, hp: OmegaConf) -> np
              out_shardings=data_sharding)
     def model_inference(params, x):
         """JIT编译的模型推理函数"""
-        return model.apply({'params': params}, x, deterministic=True)
+        model = nnx.merge(graphdef, params)
+        return model(x, deterministic=True)
     
-    # JIT编译的窗口化函数
-    @partial(jax.jit, 
-             in_shardings=(data_sharding, replicate_sharding), 
-             out_shardings=data_sharding)
-    def apply_windowing_batch(x_batch, window):
-        """批量应用窗口函数"""
-        return jax.vmap(lambda x: x * window)(x_batch)
+    # 窗口化函数改为主机端处理，避免小批次与多设备分片冲突
+    def apply_windowing_single(x_single, window):
+        """单个块应用窗口函数"""
+        return np.asarray(x_single) * window
     
     def _create_fade_window(window_size: int, fade_size: int) -> np.ndarray:
         """创建带淡入淡出效果的窗口数组
@@ -323,13 +337,9 @@ def demix_track(model, params, mix: np.ndarray, mesh: Mesh, hp: OmegaConf) -> np
                     else:
                         window = base_window
                     
-                    # 将窗口放置到设备上
-                    device_window = jax.device_put(window, replicate_sharding)
-                    
-                    # 应用窗口化到单个输出
+                    # 应用窗口化到单个输出（转回主机端数组）
                     single_output = inference_output[j:j+1, ..., :chunk_size]
-                    windowed_single = apply_windowing_batch(single_output, device_window)
-                    windowed_result = np.asarray(windowed_single[0])
+                    windowed_result = apply_windowing_single(single_output[0], window)
                     
                     # 累加到结果数组
                     start_pos, actual_len = batch_positions[j]
@@ -389,6 +399,13 @@ def main() -> None:
         type=str,
         default=os.getenv('START_CHECK_POINT', 'deverb_bs_roformer_8_256dim_8depth.ckpt'),
         help='模型检查点文件路径'
+    )
+
+    parser.add_argument(
+        '--model_config_path',
+        type=str,
+        default=os.getenv('MODEL_CONFIG_PATH'),
+        help='模型配置文件路径(可选)',
     )
     
     parser.add_argument(
