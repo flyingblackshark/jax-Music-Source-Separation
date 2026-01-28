@@ -1,5 +1,4 @@
 import argparse
-import glob
 import os
 import time
 from functools import partial
@@ -8,7 +7,6 @@ from typing import Tuple, List, Optional
 
 from flax import nnx
 import jax
-import jax.numpy as jnp
 import librosa
 import numpy as np
 import soundfile as sf
@@ -16,6 +14,8 @@ from jax.experimental import mesh_utils
 from jax.sharding import Mesh, PartitionSpec, NamedSharding
 
 from jaxmsst.configs.loader import load_infer_config
+
+SUPPORTED_AUDIO_SUFFIXES = {".wav", ".mp3", ".flac", ".m4a", ".aac"}
 
 def load_model_from_config(
     config_path: str,
@@ -87,6 +87,24 @@ def load_model_from_config(
         
     graphdef, _ = nnx.split(model, nnx.Param)
     return graphdef, params, hp
+
+
+def collect_audio_files(input_path: Path) -> List[Path]:
+    """收集输入路径下的音频文件（支持递归遍历子目录）"""
+    if input_path.is_file():
+        return [input_path] if input_path.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES else []
+
+    if not input_path.is_dir():
+        return []
+
+    audio_files = [
+        p
+        for p in input_path.rglob("*")
+        if p.is_file() and p.suffix.lower() in SUPPORTED_AUDIO_SUFFIXES
+    ]
+    return sorted(audio_files, key=lambda p: str(p))
+
+
 def run_folder(args) -> None:
     """批量处理文件夹中的音频文件
     
@@ -111,14 +129,8 @@ def run_folder(args) -> None:
         print(f"输入文件夹不存在: {args.input_folder}")
         return
         
-    # 支持的音频格式
-    audio_extensions = ['*.wav', '*.mp3', '*.flac', '*.m4a', '*.aac']
-    all_mixtures_path = []
-    for ext in audio_extensions:
-        all_mixtures_path.extend(input_path.glob(ext))
-        all_mixtures_path.extend(input_path.glob(ext.upper()))
-    
-    all_mixtures_path = sorted([str(p) for p in all_mixtures_path])
+    # 支持递归遍历子目录
+    all_mixtures_path = collect_audio_files(input_path)
     
     if not all_mixtures_path:
         print(f"在 {args.input_folder} 中未找到支持的音频文件")
@@ -129,6 +141,7 @@ def run_folder(args) -> None:
     # 创建输出目录
     output_path = Path(args.store_dir)
     output_path.mkdir(parents=True, exist_ok=True)
+    input_root_dir = input_path if input_path.is_dir() else input_path.parent
 
     # 初始化JAX设备网格
     device_mesh = mesh_utils.create_device_mesh((jax.device_count(),))
@@ -138,12 +151,16 @@ def run_folder(args) -> None:
     processed_count = 0
     failed_count = 0
     
-    for idx, path in enumerate(all_mixtures_path, 1):
-        print(f"[{idx}/{len(all_mixtures_path)}] 处理音频: {Path(path).name}")
+    for idx, audio_path in enumerate(all_mixtures_path, 1):
+        try:
+            display_path = str(audio_path.relative_to(input_root_dir))
+        except Exception:
+            display_path = audio_path.name
+        print(f"[{idx}/{len(all_mixtures_path)}] 处理音频: {display_path}")
         
         try:
             # 加载音频文件
-            mix, sr = librosa.load(path, sr=44100, mono=False)
+            mix, sr = librosa.load(str(audio_path), sr=44100, mono=False)
             
             # 确保立体声格式
             if mix.ndim == 1:
@@ -156,12 +173,19 @@ def run_folder(args) -> None:
             separated_sources = demix_track(graphdef, params, mix, mesh, hp)
 
             # 保存分离结果
-            file_name = Path(path).stem
+            file_name = audio_path.stem
+            parent_prefix = audio_path.parent.name
+            output_stem = f"{parent_prefix}_{file_name}" if parent_prefix else file_name
+            relative_parent = (
+                audio_path.parent.relative_to(input_root_dir) if input_path.is_dir() else Path(".")
+            )
+            file_output_dir = output_path / relative_parent
+            file_output_dir.mkdir(parents=True, exist_ok=True)
             
             for i, instrument in enumerate(hp.training.instruments):
                 if i < len(separated_sources):
                     estimates = separated_sources[i].transpose(1, 0)
-                    output_file = output_path / f"{file_name}_{instrument}.wav"
+                    output_file = file_output_dir / f"{output_stem}_{instrument}.wav"
                     sf.write(str(output_file), estimates, sr, subtype='FLOAT')
             
             processed_count += 1

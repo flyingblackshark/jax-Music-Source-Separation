@@ -18,9 +18,9 @@
                 "--start_check_point",
                 "BS-Roformer-HyperACE/v2_voc/bs_roformer_voc_hyperacev2.ckpt",
                 "--input_folder",
-                "./input",
+                "/dev/shm/target_speaker_segments",
                 "--store_dir",
-                "./output"
+                "/dev/shm/extract_vocal"
             ],
             "env": {
                 "jax_compilation_cache_dir": "/dev/shm/jit_cache"
