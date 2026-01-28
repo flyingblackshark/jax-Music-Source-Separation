@@ -25,6 +25,30 @@
             "env": {
                 "jax_compilation_cache_dir": "/dev/shm/jit_cache"
             }
+        },
+           {
+            "name": "Inference Batch Test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "src/jaxmsst/infer_batch.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--config_path",
+                "configs/infer.yaml",
+                "--model_config_path",
+                "BS-Roformer-HyperACE/v2_voc/config.yaml",
+                "--start_check_point",
+                "BS-Roformer-HyperACE/v2_voc/bs_roformer_voc_hyperacev2.ckpt",
+                "--input_folder",
+                "/dev/shm/target_speaker_segments",
+                "--store_dir",
+                "/dev/shm/extract_vocal",
+                "--batch_size",
+                "32"
+            ],
+            "env": {
+                "jax_compilation_cache_dir": "/dev/shm/jit_cache"
+            }
         }
     ]
 }
