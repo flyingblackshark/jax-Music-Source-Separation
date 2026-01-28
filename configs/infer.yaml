@@ -4,5 +4,5 @@ inference:
   num_overlap: 4
 model:
   type: "bs_roformer"
-  attention: "tokamax_attention"
+  attention: "dot_product"
   flash_min_seq_len: 2048

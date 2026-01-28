@@ -66,14 +66,6 @@ class Trainer:
         if jax.process_index() == 0:
             logger.info(f"Mesh: {self.mesh}")
 
-        # Tokamax Mosaic kernels require explicit shard_map wrapping; provide Mesh to attention helper.
-        try:
-            from jaxmsst.models.flash_attention import set_flash_attention_mesh
-
-            set_flash_attention_mesh(self.mesh)
-        except Exception:
-            pass
-
         def get_sharding_for_spec(pspec: PartitionSpec) -> NamedSharding:
             return NamedSharding(self.mesh, pspec)
 
