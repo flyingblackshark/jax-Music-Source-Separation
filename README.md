@@ -30,14 +30,14 @@ sudo docker run -d --net=host --privileged -v /bucket:/bucket jax-msst:dev pytho
 Basic usage:
 ```
 PYTHONPATH=src python -m jaxmsst.infer \
-  --config_path configs/bs_roformer_logic.yaml \
+  --config_path configs/infer.yaml \
   --start_check_point /path/to/model.ckpt \
   --input_folder ./input \
   --store_dir ./output
 ```
 
 Notes:
-- `configs/*.yaml` controls training/inference behavior (`train`, `data`, `data_loader`, `log`, `inference`).
+- `configs/infer.yaml` only contains the `inference` section.
 - Model/audio params come from a model-side `config.yaml`. Provide it with `--model_config_path` or place `config.yaml` next to the checkpoint.
 - On TPU/multi-device, set `inference.batch_size` to a multiple of device count.
 
@@ -65,7 +65,7 @@ Path('BS-Roformer-HyperACE/v2_voc/config_omega.yaml').write_text(
 PY
 
 PYTHONPATH=src python -m jaxmsst.infer \
-  --config_path configs/bs_roformer_logic.yaml \
+  --config_path configs/infer.yaml \
   --model_config_path BS-Roformer-HyperACE/v2_voc/config_omega.yaml \
   --start_check_point BS-Roformer-HyperACE/v2_voc/bs_roformer_voc_hyperacev2.ckpt \
   --input_folder ./input \
@@ -76,6 +76,7 @@ PYTHONPATH=src python -m jaxmsst.infer \
 ```
 PYTHONPATH=src python -m jaxmsst.webui --config_path configs/webui/model_options.yaml
 ```
+`configs/webui/model_options.yaml` should set each model option's `config_path` to an inference config (e.g. `configs/infer.yaml`), and set `model_config_path` to the model folder `config.yaml` when needed.
 
 ## Training
 ```

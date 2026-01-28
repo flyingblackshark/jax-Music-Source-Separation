@@ -182,8 +182,6 @@ class Attention(nnx.Module):
         heads: int = 8,
         dim_head: int = 64,
         dropout: float = 0.0,
-        shared_qkv_bias: bool = False,
-        shared_out_bias: bool = False,
         *,
         rngs: nnx.Rngs,
     ) -> None:
@@ -191,13 +189,12 @@ class Attention(nnx.Module):
         self.heads = heads
         self.dim_head = dim_head
         self.dropout = dropout
-        self.shared_qkv_bias = shared_qkv_bias
-        self.shared_out_bias = shared_out_bias
+
         dim_inner = heads * dim_head
         self.RMSNorm_0 = RMSNorm(dim)
-        self.to_qkv = nnx.Linear(dim, dim_inner * 3, use_bias=shared_qkv_bias, rngs=rngs)
+        self.to_qkv = nnx.Linear(dim, dim_inner * 3, use_bias=False, rngs=rngs)
         self.to_gates = nnx.Linear(dim, heads, rngs=rngs)
-        self.to_out = nnx.Linear(dim_inner, dim, use_bias=shared_out_bias, rngs=rngs)
+        self.to_out = nnx.Linear(dim_inner, dim, use_bias=False, rngs=rngs)
         self.Dropout_0 = nnx.Dropout(dropout)
         self.attend = Attend(dropout=dropout)
         self.freqs = nnx.Param(jnp.ones((dim_head // 2,), dtype=jnp.float32))
@@ -244,8 +241,6 @@ class Transformer(nnx.Module):
         self.ff_dropout = ff_dropout
         self.ff_mult = ff_mult
         self.norm_output = norm_output
-        self.shared_qkv_bias = shared_qkv_bias
-        self.shared_out_bias = shared_out_bias
         self.layers = []
         for layer_idx in range(depth):
             attn = Attention(
@@ -253,8 +248,6 @@ class Transformer(nnx.Module):
                 dim_head=dim_head,
                 heads=heads,
                 dropout=attn_dropout,
-                shared_qkv_bias=shared_qkv_bias,
-                shared_out_bias=shared_out_bias,
                 rngs=rngs,
             )
             ff = FeedForward(dim=dim, mult=ff_mult, dropout=ff_dropout, rngs=rngs)
@@ -428,7 +421,6 @@ class BSRoformer(nnx.Module):
         multi_stft_resolutions_window_sizes: Tuple[int, ...] = (4096, 2048, 1024, 512, 256),
         multi_stft_hop_size: int = 147,
         multi_stft_normalized: bool = False,
-        use_shared_bias: bool = False,
         *,
         rngs: nnx.Rngs | None = None,
     ) -> None:
@@ -453,7 +445,6 @@ class BSRoformer(nnx.Module):
         self.multi_stft_resolutions_window_sizes = multi_stft_resolutions_window_sizes
         self.multi_stft_hop_size = multi_stft_hop_size
         self.multi_stft_normalized = multi_stft_normalized
-        self.use_shared_bias = use_shared_bias
 
         if rngs is None:
             rngs = nnx.Rngs(0)
@@ -478,8 +469,6 @@ class BSRoformer(nnx.Module):
                 attn_dropout=attn_dropout,
                 ff_dropout=ff_dropout,
                 norm_output=False,
-                shared_qkv_bias=use_shared_bias,
-                shared_out_bias=use_shared_bias,
                 rngs=rngs,
             )
             freq_transformer = Transformer(
@@ -490,8 +479,6 @@ class BSRoformer(nnx.Module):
                 attn_dropout=attn_dropout,
                 ff_dropout=ff_dropout,
                 norm_output=False,
-                shared_qkv_bias=use_shared_bias,
-                shared_out_bias=use_shared_bias,
                 rngs=rngs,
             )
             time_name = f"time_transformer_{idx}"

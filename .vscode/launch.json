@@ -1,0 +1,30 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Inference Test",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "src/jaxmsst/infer.py",
+            "console": "integratedTerminal",
+            "args": [
+                "--config_path",
+                "configs/infer.yaml",
+                "--model_config_path",
+                "BS-Roformer-HyperACE/v2_voc/config.yaml",
+                "--start_check_point",
+                "BS-Roformer-HyperACE/v2_voc/bs_roformer_voc_hyperacev2.ckpt",
+                "--input_folder",
+                "./input",
+                "--store_dir",
+                "./output"
+            ],
+            "env": {
+                "jax_compilation_cache_dir": "/dev/shm/jit_cache"
+            }
+        }
+    ]
+}

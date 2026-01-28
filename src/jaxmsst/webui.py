@@ -1,25 +1,26 @@
 import argparse
 import librosa
 import numpy as np
+from pathlib import Path
 from jax.experimental import mesh_utils
 from jax.sharding import Mesh, PartitionSpec, NamedSharding
 import jax
 from jaxmsst.infer import load_model_from_config,demix_track
 import os
-from omegaconf import OmegaConf
+import yaml
 from functools import partial
 import gradio as gr
-from jaxmsst.configs.loader import load_config
+from jaxmsst.configs.loader import load_infer_config
 
 # 从配置文件加载模型选项
 def load_model_config_options(config_path):
-    config = OmegaConf.load(config_path)
+    config = yaml.load(Path(config_path).read_text(), Loader=yaml.FullLoader) or {}
     model_options = {}
-    for name, options in config.model_options.items():
+    for name, options in (config.get("model_options") or {}).items():
         model_options[name] = {
-            "config_path": options.config_path,
-            "model_path": options.model_path,
-            "model_config_path": getattr(options, "model_config_path", None),
+            "config_path": options.get("config_path"),
+            "model_path": options.get("model_path"),
+            "model_config_path": options.get("model_config_path"),
         }
     return model_options
 
@@ -76,7 +77,7 @@ def main():
     configs = load_model_config_options(args.config_path)
     # 动态创建输出组件，根据第一个模型配置的instruments数量
     first_config = list(configs.values())[0]
-    hp = load_config(
+    hp = load_infer_config(
         first_config["config_path"],
         model_config_path=first_config["model_config_path"],
         checkpoint_path=first_config["model_path"],

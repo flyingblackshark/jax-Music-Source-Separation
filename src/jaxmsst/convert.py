@@ -19,15 +19,12 @@ def load_bs_roformer_params(path,hp):
         params[f"time_transformer_{i}.layers_0_0.freqs"]=state_dict[f"layers.{i}.0.layers.0.0.rotary_embed.freqs"]
         params[f"time_transformer_{i}.layers_0_0.RMSNorm_0.gamma"]=state_dict[f"layers.{i}.0.layers.0.0.norm.gamma"]
         params[f"time_transformer_{i}.layers_0_0.to_qkv.kernel"]=state_dict[f"layers.{i}.0.layers.0.0.to_qkv.weight"].transpose(0,1)
-        if hp.model.use_shared_bias is True:
-            params[f"time_transformer_{i}.layers_0_0.to_qkv.bias"]=state_dict[f"layers.{i}.0.layers.0.0.to_qkv.bias"]
+       
 
         params[f"time_transformer_{i}.layers_0_0.to_gates.kernel"]=state_dict[f"layers.{i}.0.layers.0.0.to_gates.weight"].transpose(0,1)
         params[f"time_transformer_{i}.layers_0_0.to_gates.bias"]=state_dict[f"layers.{i}.0.layers.0.0.to_gates.bias"]
         params[f"time_transformer_{i}.layers_0_0.to_out.kernel"]=state_dict[f"layers.{i}.0.layers.0.0.to_out.0.weight"].transpose(0,1)
-        if hp.model.use_shared_bias is True:
-            params[f"time_transformer_{i}.layers_0_0.to_out.bias"]=state_dict[f"layers.{i}.0.layers.0.0.to_out.0.bias"]
-
+       
         params[f"time_transformer_{i}.layers_0_1.RMSNorm_0.gamma"]=state_dict[f"layers.{i}.0.layers.0.1.net.0.gamma"]
         params[f"time_transformer_{i}.layers_0_1.Dense_0.kernel"]=state_dict[f"layers.{i}.0.layers.0.1.net.1.weight"].transpose(0,1)
         params[f"time_transformer_{i}.layers_0_1.Dense_0.bias"]=state_dict[f"layers.{i}.0.layers.0.1.net.1.bias"]
@@ -37,14 +34,11 @@ def load_bs_roformer_params(path,hp):
         params[f"freq_transformer_{i}.layers_0_0.freqs"]=state_dict[f"layers.{i}.1.layers.0.0.rotary_embed.freqs"]
         params[f"freq_transformer_{i}.layers_0_0.RMSNorm_0.gamma"]=state_dict[f"layers.{i}.1.layers.0.0.norm.gamma"]
         params[f"freq_transformer_{i}.layers_0_0.to_qkv.kernel"]=state_dict[f"layers.{i}.1.layers.0.0.to_qkv.weight"].transpose(0,1)
-        if hp.model.use_shared_bias is True:
-            params[f"freq_transformer_{i}.layers_0_0.to_qkv.bias"]=state_dict[f"layers.{i}.1.layers.0.0.to_qkv.bias"]
-
+        
         params[f"freq_transformer_{i}.layers_0_0.to_gates.kernel"]=state_dict[f"layers.{i}.1.layers.0.0.to_gates.weight"].transpose(0,1)
         params[f"freq_transformer_{i}.layers_0_0.to_gates.bias"]=state_dict[f"layers.{i}.1.layers.0.0.to_gates.bias"]
         params[f"freq_transformer_{i}.layers_0_0.to_out.kernel"]=state_dict[f"layers.{i}.1.layers.0.0.to_out.0.weight"].transpose(0,1)
-        if hp.model.use_shared_bias is True:
-            params[f"freq_transformer_{i}.layers_0_0.to_out.bias"]=state_dict[f"layers.{i}.1.layers.0.0.to_out.0.bias"]
+       
 
         params[f"freq_transformer_{i}.layers_0_1.RMSNorm_0.gamma"]=state_dict[f"layers.{i}.1.layers.0.1.net.0.gamma"]
         params[f"freq_transformer_{i}.layers_0_1.Dense_0.kernel"]=state_dict[f"layers.{i}.1.layers.0.1.net.1.weight"].transpose(0,1)

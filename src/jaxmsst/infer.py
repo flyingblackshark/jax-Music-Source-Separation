@@ -14,15 +14,14 @@ import numpy as np
 import soundfile as sf
 from jax.experimental import mesh_utils
 from jax.sharding import Mesh, PartitionSpec, NamedSharding
-from omegaconf import OmegaConf
 
-from jaxmsst.configs.loader import load_config
+from jaxmsst.configs.loader import load_infer_config
 
 def load_model_from_config(
     config_path: str,
     start_check_point: str,
     model_config_path: Optional[str] = None,
-) -> Tuple[nnx.GraphDef, dict, OmegaConf]:
+) -> Tuple[nnx.GraphDef, dict, dict]:
     """加载模型配置和参数
     
     Args:
@@ -37,7 +36,7 @@ def load_model_from_config(
         FileNotFoundError: 配置文件不存在
         ValueError: 未知的模型类型
     """
-    hp = load_config(
+    hp = load_infer_config(
         config_path,
         model_config_path=model_config_path,
         checkpoint_path=start_check_point,
@@ -57,7 +56,6 @@ def load_model_from_config(
             depth=hp.model.depth,
             stereo=hp.model.stereo,
             num_stems=hp.model.num_stems,
-            use_shared_bias=hp.model.use_shared_bias,
             time_transformer_depth=hp.model.time_transformer_depth,
             freq_transformer_depth=hp.model.freq_transformer_depth,
             rngs=nnx.Rngs(0),
@@ -154,7 +152,7 @@ def run_folder(args) -> None:
             # 保存分离结果
             file_name = Path(path).stem
             
-            for i, instrument in enumerate(hp.model.instruments):
+            for i, instrument in enumerate(hp.training.instruments):
                 if i < len(separated_sources):
                     estimates = separated_sources[i].transpose(1, 0)
                     output_file = output_path / f"{file_name}_{instrument}.wav"
@@ -178,7 +176,7 @@ def run_folder(args) -> None:
         print(f"平均每个文件: {elapsed_time/processed_count:.2f} 秒")
 
 
-def demix_track(graphdef, params, mix: np.ndarray, mesh: Mesh, hp: OmegaConf) -> np.ndarray:
+def demix_track(graphdef, params, mix: np.ndarray, mesh: Mesh, hp: dict) -> np.ndarray:
     """音频分离核心函数
     
     使用滑动窗口和批处理技术对音频进行源分离，支持GPU加速和内存优化。
@@ -390,8 +388,8 @@ def main() -> None:
     parser.add_argument(
         '--config_path', 
         type=str, 
-        default=os.getenv('CONFIG_PATH', './configs/bs_roformer_base.yaml'),
-        help='模型配置文件路径'
+        default=os.getenv('CONFIG_PATH', './configs/infer.yaml'),
+        help='推理配置文件路径'
     )
     
     parser.add_argument(

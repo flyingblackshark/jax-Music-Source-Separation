@@ -165,7 +165,7 @@ deverb_bs_roformer_8_256dim_8depth.ckpt
 jax_cache/
 input/
 output/
-.vscode/
+#.vscode/
 .conda/
 MelBandRoformer.ckpt
 logic_roformer.pt
