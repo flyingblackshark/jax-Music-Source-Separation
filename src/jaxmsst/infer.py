@@ -46,6 +46,8 @@ def load_model_from_config(
         raise ValueError("配置文件中缺少模型类型定义")
     
     model_type = hp.model.type.lower()
+    attention_type = getattr(hp.model, "attention", "dot_product")
+    flash_min_seq_len = int(getattr(hp.model, "flash_min_seq_len", 0) or 0)
     
     if model_type == "bs_roformer":
         from jaxmsst.models.bs_roformer import BSRoformer
@@ -58,6 +60,8 @@ def load_model_from_config(
             num_stems=hp.model.num_stems,
             time_transformer_depth=hp.model.time_transformer_depth,
             freq_transformer_depth=hp.model.freq_transformer_depth,
+            attention_type=attention_type,
+            flash_min_seq_len=flash_min_seq_len,
             rngs=nnx.Rngs(0),
         )
         params = load_bs_roformer_params(start_check_point, hp)
@@ -72,6 +76,8 @@ def load_model_from_config(
             stereo=hp.model.stereo,
             time_transformer_depth=hp.model.time_transformer_depth,
             freq_transformer_depth=hp.model.freq_transformer_depth,
+            attention_type=attention_type,
+            flash_min_seq_len=flash_min_seq_len,
             rngs=nnx.Rngs(0),
         )
         params = load_mel_band_roformer_params(start_check_point, hp)
@@ -222,6 +228,14 @@ def demix_track(graphdef, params, mix: np.ndarray, mesh: Mesh, hp: dict) -> np.n
     # 设置JAX分片策略
     replicate_sharding = NamedSharding(mesh, PartitionSpec())
     data_sharding = NamedSharding(mesh, PartitionSpec('data'))
+
+    # Tokamax Mosaic kernels require explicit shard_map wrapping; provide Mesh to attention helper.
+    try:
+        from jaxmsst.models.flash_attention import set_flash_attention_mesh
+
+        set_flash_attention_mesh(mesh)
+    except Exception:
+        pass
     
     # 将参数放置到设备上
     params = jax.device_put(params, replicate_sharding)

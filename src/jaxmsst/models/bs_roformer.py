@@ -7,6 +7,8 @@ import jax.numpy as jnp
 import jax.lax as lax
 import numpy as np
 
+from .flash_attention import apply_attention
+
 
 def exists(val):
     return val is not None
@@ -121,15 +123,29 @@ class FeedForward(nnx.Module):
 
 
 class Attend(nnx.Module):
-    def __init__(self, dropout: float = 0.0) -> None:
+    def __init__(
+        self,
+        dropout: float = 0.0,
+        attention_type: str = "dot_product",
+        flash_min_seq_len: int = 0,
+    ) -> None:
         self.dropout = dropout
+        self.attention_type = attention_type
+        self.flash_min_seq_len = flash_min_seq_len
 
     def __call__(self, q, k, v, deterministic: bool) -> jnp.ndarray:
         scale = q.shape[-1] ** -0.5
         q = q.transpose(0, 2, 1, 3)
         k = k.transpose(0, 2, 1, 3)
         v = v.transpose(0, 2, 1, 3)
-        out = jax.nn.dot_product_attention(q, k, v, scale=scale)
+        out = apply_attention(
+            q,
+            k,
+            v,
+            scale=scale,
+            attention_type=self.attention_type,
+            min_seq_len=self.flash_min_seq_len,
+        )
         return out.transpose(0, 2, 1, 3)
 
 
@@ -182,6 +198,8 @@ class Attention(nnx.Module):
         heads: int = 8,
         dim_head: int = 64,
         dropout: float = 0.0,
+        attention_type: str = "dot_product",
+        flash_min_seq_len: int = 0,
         *,
         rngs: nnx.Rngs,
     ) -> None:
@@ -196,7 +214,11 @@ class Attention(nnx.Module):
         self.to_gates = nnx.Linear(dim, heads, rngs=rngs)
         self.to_out = nnx.Linear(dim_inner, dim, use_bias=False, rngs=rngs)
         self.Dropout_0 = nnx.Dropout(dropout)
-        self.attend = Attend(dropout=dropout)
+        self.attend = Attend(
+            dropout=dropout,
+            attention_type=attention_type,
+            flash_min_seq_len=flash_min_seq_len,
+        )
         self.freqs = nnx.Param(jnp.ones((dim_head // 2,), dtype=jnp.float32))
 
     def __call__(self, x: jnp.ndarray, deterministic: bool, rngs=None) -> jnp.ndarray:
@@ -230,6 +252,8 @@ class Transformer(nnx.Module):
         norm_output: bool = True,
         shared_qkv_bias: bool = False,
         shared_out_bias: bool = False,
+        attention_type: str = "dot_product",
+        flash_min_seq_len: int = 0,
         *,
         rngs: nnx.Rngs,
     ) -> None:
@@ -248,6 +272,8 @@ class Transformer(nnx.Module):
                 dim_head=dim_head,
                 heads=heads,
                 dropout=attn_dropout,
+                attention_type=attention_type,
+                flash_min_seq_len=flash_min_seq_len,
                 rngs=rngs,
             )
             ff = FeedForward(dim=dim, mult=ff_mult, dropout=ff_dropout, rngs=rngs)
@@ -411,6 +437,8 @@ class BSRoformer(nnx.Module):
         heads: int = 8,
         attn_dropout: float = 0.1,
         ff_dropout: float = 0.1,
+        attention_type: str = "dot_product",
+        flash_min_seq_len: int = 0,
         dim_freqs_in: int = 1025,
         stft_n_fft: int = 2048,
         stft_hop_length: int = 512,
@@ -435,6 +463,8 @@ class BSRoformer(nnx.Module):
         self.heads = heads
         self.attn_dropout = attn_dropout
         self.ff_dropout = ff_dropout
+        self.attention_type = attention_type
+        self.flash_min_seq_len = flash_min_seq_len
         self.dim_freqs_in = dim_freqs_in
         self.stft_n_fft = stft_n_fft
         self.stft_hop_length = stft_hop_length
@@ -469,6 +499,8 @@ class BSRoformer(nnx.Module):
                 attn_dropout=attn_dropout,
                 ff_dropout=ff_dropout,
                 norm_output=False,
+                attention_type=attention_type,
+                flash_min_seq_len=flash_min_seq_len,
                 rngs=rngs,
             )
             freq_transformer = Transformer(
@@ -479,6 +511,8 @@ class BSRoformer(nnx.Module):
                 attn_dropout=attn_dropout,
                 ff_dropout=ff_dropout,
                 norm_output=False,
+                attention_type=attention_type,
+                flash_min_seq_len=flash_min_seq_len,
                 rngs=rngs,
             )
             time_name = f"time_transformer_{idx}"

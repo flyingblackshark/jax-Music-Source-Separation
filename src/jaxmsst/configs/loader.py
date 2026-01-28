@@ -142,10 +142,12 @@ def load_infer_config(
     if "model" not in merged:
         merged["model"] = {}
 
+    if "model" in infer_config and isinstance(infer_config["model"], dict):
+        # Allow infer.yaml to override model-side knobs related to inference behavior.
+        for key, value in infer_config["model"].items():
+            merged["model"][key] = value
+
     if "type" not in merged["model"]:
-        if "model" in infer_config and "type" in infer_config["model"]:
-            merged["model"]["type"] = infer_config["model"]["type"]
-        else:
-            merged["model"]["type"] = _infer_model_type(model_config)
+        merged["model"]["type"] = _infer_model_type(model_config)
 
     return _to_attrdict(merged)

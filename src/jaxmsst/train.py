@@ -33,12 +33,16 @@ class Trainer:
         )
         init_key, self.train_key = random.split(rng, 2)
 
+        attention_type = getattr(hp.model, "attention", "dot_product")
+        flash_min_seq_len = int(getattr(hp.model, "flash_min_seq_len", 0) or 0)
         self.bsr_model = BSRoformer(
             dim=hp.model.dim,
             depth=hp.model.depth,
             stereo=hp.model.stereo,
             time_transformer_depth=hp.model.time_transformer_depth,
             freq_transformer_depth=hp.model.freq_transformer_depth,
+            attention_type=attention_type,
+            flash_min_seq_len=flash_min_seq_len,
             rngs=nnx.Rngs(init_key),
         )
 
@@ -61,6 +65,14 @@ class Trainer:
         self.mesh = Mesh(device_mesh, axis_names=("data", "model"))
         if jax.process_index() == 0:
             logger.info(f"Mesh: {self.mesh}")
+
+        # Tokamax Mosaic kernels require explicit shard_map wrapping; provide Mesh to attention helper.
+        try:
+            from jaxmsst.models.flash_attention import set_flash_attention_mesh
+
+            set_flash_attention_mesh(self.mesh)
+        except Exception:
+            pass
 
         def get_sharding_for_spec(pspec: PartitionSpec) -> NamedSharding:
             return NamedSharding(self.mesh, pspec)
