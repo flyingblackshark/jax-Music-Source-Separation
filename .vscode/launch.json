@@ -18,9 +18,9 @@
                 "--start_check_point",
                 "BS-Roformer-HyperACE/v2_voc/bs_roformer_voc_hyperacev2.ckpt",
                 "--input_folder",
-                "/dev/shm/target_speaker_segments",
+                "/dev/shm/split_segment/long",
                 "--store_dir",
-                "/dev/shm/extract_vocal"
+                "/dev/shm/extract_vocal_long"
             ],
             "env": {
                 "jax_compilation_cache_dir": "/dev/shm/jit_cache"
@@ -40,11 +40,11 @@
                 "--start_check_point",
                 "BS-Roformer-HyperACE/v2_voc/bs_roformer_voc_hyperacev2.ckpt",
                 "--input_folder",
-                "/dev/shm/target_speaker_segments",
+                "/dev/shm/split_segment/short",
                 "--store_dir",
-                "/dev/shm/extract_vocal",
+                "/dev/shm/extract_vocal_short",
                 "--batch_size",
-                "32"
+                "8"
             ],
             "env": {
                 "jax_compilation_cache_dir": "/dev/shm/jit_cache"
