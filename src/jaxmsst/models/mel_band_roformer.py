@@ -50,7 +50,9 @@ class RMSNorm(nnx.Module):
         self.gamma = nnx.Param(jnp.ones((dim,), dtype=weight_dtype))
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        x = x / jnp.linalg.norm(x, axis=-1, keepdims=True)
+        norm = jnp.linalg.norm(x, axis=-1, keepdims=True)
+        norm = jnp.where(norm == 0, jnp.asarray(1.0, norm.dtype), norm)
+        x = x / norm
         gamma = jnp.asarray(self.gamma, self.dtype)
         y = x * gamma * (self.dim ** 0.5)
         return y
