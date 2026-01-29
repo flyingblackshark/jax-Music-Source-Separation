@@ -285,6 +285,7 @@ def run_folder(args) -> None:
                         if i < len(separated_sources):
                             estimates = separated_sources[i].transpose(1, 0)
                             output_file = file_output_dir / f"{output_stem}_{instrument}.wav"
+                            estimates = np.nan_to_num(estimates)
                             sf.write(str(output_file), estimates, sr, subtype='FLOAT')
             
             processed_count += 1

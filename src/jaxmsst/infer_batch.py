@@ -232,6 +232,7 @@ def run(args) -> None:
                             break
                         estimates = pred[stem_idx].transpose(1, 0)  # (time, channels)
                         output_file = file_output_dir / f"{output_stem}_{instrument}.wav"
+                        estimates = np.nan_to_num(estimates)
                         sf.write(str(output_file), estimates, target_sr, subtype="FLOAT")
                     processed_count += 1
                 except Exception as e:

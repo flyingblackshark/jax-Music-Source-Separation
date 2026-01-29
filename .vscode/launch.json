@@ -44,7 +44,7 @@
                 "--store_dir",
                 "/dev/shm/extract_vocal_short",
                 "--batch_size",
-                "8"
+                "32"
             ],
             "env": {
                 "jax_compilation_cache_dir": "/dev/shm/jit_cache"
